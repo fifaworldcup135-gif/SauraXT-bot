@@ -42,7 +42,11 @@ process.on('uncaughtExceptionMonitor', (err, origin) => {
 });
 
 async function main() {
-  const token = process.env.BOT_TOKEN || 'MTA2MjM0MjI5NDM5ODgzNjczNw.Gdlosc.oC7yCvRrCG74BPPHw6MKA-B8EH5Yw6PkGpjBBA';
+  const token = process.env.BOT_TOKEN;
+  if (!token) {
+    console.error('❌ ERROR: BOT_TOKEN is missing. Please set BOT_TOKEN in the Env tab or .env file!');
+    process.exit(1);
+  }
 
   // 1. Start 24/7 Web Keep-Alive Dashboard
   startKeepAliveServer(client);
