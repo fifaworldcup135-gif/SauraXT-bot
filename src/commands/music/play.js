@@ -7,7 +7,7 @@ import { config } from '../../config.js';
 export const data = new SlashCommandBuilder()
   .setName('play')
   .setDescription('Play any song, track, or stream in your voice channel')
-  .addStringOption(opt => opt.setName('query').setDescription('Song name, YouTube, or SoundCloud link').setRequired(true));
+  .addStringOption(opt => opt.setName('query').setDescription('Song name, YouTube URL, or Spotify/SoundCloud link').setRequired(true));
 
 export async function execute(interaction) {
   const voiceChannel = interaction.member.voice.channel;
@@ -19,30 +19,59 @@ export async function execute(interaction) {
   }
 
   await interaction.deferReply();
-  const query = interaction.options.getString('query');
+  const rawQuery = interaction.options.getString('query').trim();
 
   try {
-    let track = null;
+    let searchQuery = rawQuery;
+    let trackThumbnail = null;
+    let trackTitle = null;
+    let trackArtist = null;
 
-    // Search SoundCloud first for high-reliability unblocked audio streaming
-    const scResults = await play.search(query, {
+    // 1. If YouTube URL, resolve exact title & metadata
+    if (rawQuery.includes('youtube.com') || rawQuery.includes('youtu.be')) {
+      const ytInfo = await play.video_basic_info(rawQuery).catch(() => null);
+      if (ytInfo && ytInfo.video_details) {
+        searchQuery = ytInfo.video_details.title;
+        trackTitle = ytInfo.video_details.title;
+        trackArtist = ytInfo.video_details.channel?.name || 'Artist';
+        trackThumbnail = ytInfo.video_details.thumbnails[0]?.url;
+      }
+    }
+
+    // 2. If Spotify URL, resolve exact song & artist
+    if (rawQuery.includes('spotify.com')) {
+      const spType = play.sp_validate(rawQuery);
+      if (spType === 'track') {
+        const spData = await play.spotify(rawQuery).catch(() => null);
+        if (spData) {
+          searchQuery = spData.name + ' ' + (spData.artists ? spData.artists.map(a => a.name).join(' ') : '');
+          trackTitle = spData.name;
+          trackArtist = spData.artists ? spData.artists[0]?.name : 'Artist';
+          trackThumbnail = spData.thumbnail?.url;
+        }
+      }
+    }
+
+    // 3. Search high-quality audio stream provider with exact query
+    let track = null;
+    const scResults = await play.search(searchQuery, {
       source: { soundcloud: 'tracks' },
-      limit: 1
+      limit: 5
     }).catch(() => []);
 
     if (scResults && scResults.length > 0) {
       const item = scResults[0];
       track = {
-        title: item.name || item.title || query,
+        title: trackTitle || item.name || item.title || searchQuery,
         url: item.url,
         duration: item.durationInSec ? Math.floor(item.durationInSec / 60) + ':' + (item.durationInSec % 60 < 10 ? '0' : '') + (item.durationInSec % 60) : 'HQ Audio',
-        thumbnail: item.thumbnail,
-        artist: item.user?.name || 'Artist',
+        thumbnail: trackThumbnail || item.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
+        artist: trackArtist || item.user?.name || 'Official Artist',
         requestedBy: interaction.user.id
       };
     } else {
-      // Fallback YouTube search
-      const ytResults = await play.search(query, { limit: 1 }).catch(() => []);
+      // Secondary search fallback
+      const ytResults = await play.search(searchQuery, { limit: 1 }).catch(() => []);
       if (ytResults && ytResults.length > 0) {
         const item = ytResults[0];
         track = {
@@ -50,7 +79,7 @@ export async function execute(interaction) {
           url: item.url,
           duration: item.durationRaw,
           thumbnail: item.thumbnails[0]?.url,
-          artist: item.channel?.name,
+          artist: item.channel?.name || 'Artist',
           requestedBy: interaction.user.id
         };
       }
@@ -58,7 +87,7 @@ export async function execute(interaction) {
 
     if (!track) {
       return interaction.editReply({
-        embeds: [errorEmbed('No Results Found', 'Could not find any playable music for `' + query + '`. Try another song name!')]
+        embeds: [errorEmbed('No Results Found', 'Could not find any playable audio for `' + rawQuery + '`. Try specifying the song and artist name!')]
       });
     }
 
@@ -72,12 +101,13 @@ export async function execute(interaction) {
             .setColor(config.colors.primary)
             .setTitle('➕ Added to Queue (Position #' + queue.queue.length + ')')
             .setDescription('**[' + track.title + '](' + track.url + ')**')
-            .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
+            .setThumbnail(track.thumbnail)
             .addFields(
-              { name: '⏱️ Duration', value: track.duration || 'HQ Audio', inline: true },
-              { name: '👤 Artist', value: track.artist || 'Official Audio', inline: true }
+              { name: '👤 Artist / Channel', value: track.artist, inline: true },
+              { name: '⏱️ Duration', value: track.duration, inline: true },
+              { name: '🙋 Requested By', value: '<@' + interaction.user.id + '>', inline: true }
             )
-            .setFooter({ text: 'Use /queue to see upcoming songs' })
+            .setFooter({ text: 'Use /queue to see upcoming tracks' })
         ]
       });
     } else {
@@ -85,9 +115,13 @@ export async function execute(interaction) {
         embeds: [
           new EmbedBuilder()
             .setColor(config.colors.success)
-            .setTitle('🎵 Joining Voice & Playing Song')
+            .setTitle('🎵 Playing Track')
             .setDescription('**[' + track.title + '](' + track.url + ')** in **' + voiceChannel.name + '**')
-            .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
+            .setThumbnail(track.thumbnail)
+            .addFields(
+              { name: '👤 Artist', value: track.artist, inline: true },
+              { name: '⏱️ Duration', value: track.duration, inline: true }
+            )
         ]
       });
 
