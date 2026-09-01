@@ -42,7 +42,7 @@ process.on('uncaughtExceptionMonitor', (err, origin) => {
 });
 
 async function main() {
-  const token = process.env.BOT_TOKEN || 'MTA2MjM0MjI5NDM5ODgzNjczNw.GFquG_.sQaDt5xvwLvUjN9D4w6GKrjMVyJ-p7qQhdf9DA';
+  const token = process.env.BOT_TOKEN || 'MTA2MjM0MjI5NDM5ODgzNjczNw.Gdlosc.oC7yCvRrCG74BPPHw6MKA-B8EH5Yw6PkGpjBBA';
 
   // 1. Start 24/7 Web Keep-Alive Dashboard
   startKeepAliveServer(client);

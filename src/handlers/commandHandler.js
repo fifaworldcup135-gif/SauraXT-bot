@@ -49,7 +49,7 @@ export async function loadCommands(client) {
 
   console.log('✅ Loaded ' + client.commands.size + ' Slash Commands.');
 
-  const token = process.env.BOT_TOKEN || 'MTA2MjM0MjI5NDM5ODgzNjczNw.GFquG_.sQaDt5xvwLvUjN9D4w6GKrjMVyJ-p7qQhdf9DA';
+  const token = process.env.BOT_TOKEN || 'MTA2MjM0MjI5NDM5ODgzNjczNw.Gdlosc.oC7yCvRrCG74BPPHw6MKA-B8EH5Yw6PkGpjBBA';
   const clientId = process.env.CLIENT_ID || '1062342294398836737';
 
   if (token && clientId) {
