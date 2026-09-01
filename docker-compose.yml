@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  bot:
+    build: .
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - BOT_TOKEN=MTA2MjM0MjI5NDM5ODgzNjczNw.GFquG_.sQaDt5xvwLvUjN9D4w6GKrjMVyJ-p7qQhdf9DA
+      - CLIENT_ID=1062342294398836737
+      - PORT=3000
+    volumes:
+      - ./data:/app/data

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: sauraxt-discord-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        value: 1062342294398836737
+      - key: PORT
+        value: 3000
