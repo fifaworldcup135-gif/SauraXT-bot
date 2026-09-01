@@ -3,8 +3,7 @@ import {
   createAudioPlayer, 
   createAudioResource, 
   AudioPlayerStatus, 
-  VoiceConnectionStatus,
-  entersState 
+  VoiceConnectionStatus 
 } from '@discordjs/voice';
 import play from 'play-dl';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -13,6 +12,19 @@ import { config } from '../config.js';
 class MusicManager {
   constructor() {
     this.queues = new Map(); // guildId => QueueObject
+    this.initSoundCloud();
+  }
+
+  async initSoundCloud() {
+    try {
+      const clientId = await play.getFreeClientID();
+      if (clientId) {
+        await play.setToken({ soundcloud: { client_id: clientId } });
+        console.log('🎵 Audio Streaming Engine initialized with high-quality stream provider.');
+      }
+    } catch (err) {
+      console.error('Audio engine init error:', err.message);
+    }
   }
 
   getQueue(guildId) {
@@ -68,12 +80,12 @@ class MusicManager {
   createNowPlayingEmbed(track, isPaused = false, isLooping = false) {
     return new EmbedBuilder()
       .setColor(config.colors.purple)
-      .setTitle('🎶 Now Playing: ' + track.title)
+      .setTitle('🎶 Now Playing: ' + (track.title || track.name))
       .setURL(track.url)
-      .setThumbnail(track.thumbnail)
+      .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
       .addFields(
-        { name: '👤 Channel / Artist', value: track.channel || 'Unknown', inline: true },
-        { name: '⏱️ Duration', value: track.duration || 'Live Stream', inline: true },
+        { name: '👤 Artist / Channel', value: track.channel || track.artist || 'Official Track', inline: true },
+        { name: '⏱️ Duration', value: track.duration || 'HQ Audio', inline: true },
         { name: '🙋 Requested By', value: track.requestedBy ? '<@' + track.requestedBy + '>' : 'DJ', inline: true }
       )
       .setFooter({ text: 'Status: ' + (isPaused ? 'Paused ⏸️' : 'Playing ▶️') + ' • Loop: ' + (isLooping ? 'ON 🔁' : 'OFF') })
@@ -108,7 +120,7 @@ class MusicManager {
       queue.player.on('error', err => {
         console.error('Audio Player Error:', err);
         if (queue.textChannel) {
-          queue.textChannel.send('⚠️ Playback encountered an error. Skipping to next song...').catch(() => {});
+          queue.textChannel.send('⚠️ Audio glitch encountered. Skipping to next song...').catch(() => {});
         }
         this.playNext(voiceChannel.guild.id);
       });
@@ -129,7 +141,19 @@ class MusicManager {
     }
 
     try {
-      const stream = await play.stream(track.url);
+      let stream;
+      try {
+        stream = await play.stream(track.url);
+      } catch (e) {
+        // Fallback search
+        const fallbackResults = await play.search(track.title || track.name, { source: { soundcloud: 'tracks' }, limit: 1 });
+        if (fallbackResults.length > 0) {
+          stream = await play.stream(fallbackResults[0].url);
+        } else {
+          throw e;
+        }
+      }
+
       const resource = createAudioResource(stream.stream, {
         inputType: stream.type,
         inlineVolume: true
@@ -165,7 +189,7 @@ class MusicManager {
       queue.isPlaying = false;
 
       if (queue.textChannel) {
-        queue.textChannel.send('🎵 Queue has ended. Leave in 5m if idle.').catch(() => {});
+        queue.textChannel.send('🎵 Queue has ended. Leaving in 5m if idle.').catch(() => {});
       }
 
       // Auto-leave after 5 minutes of inactivity

@@ -7,7 +7,7 @@ import { config } from '../../config.js';
 export const data = new SlashCommandBuilder()
   .setName('play')
   .setDescription('Play any song, track, or stream in your voice channel')
-  .addStringOption(opt => opt.setName('query').setDescription('Song name, YouTube URL, or playlist').setRequired(true));
+  .addStringOption(opt => opt.setName('query').setDescription('Song name, YouTube, or SoundCloud link').setRequired(true));
 
 export async function execute(interaction) {
   const voiceChannel = interaction.member.voice.channel;
@@ -22,43 +22,45 @@ export async function execute(interaction) {
   const query = interaction.options.getString('query');
 
   try {
-    let searchResults = [];
+    let track = null;
 
-    if (query.startsWith('http')) {
-      const info = await play.video_info(query).catch(() => null);
-      if (info) {
-        searchResults.push({
-          title: info.video_details.title,
-          url: info.video_details.url,
-          duration: info.video_details.durationRaw,
-          thumbnail: info.video_details.thumbnails[0]?.url,
-          channel: info.video_details.channel?.name
-        });
-      }
+    // Search SoundCloud first for high-reliability unblocked audio streaming
+    const scResults = await play.search(query, {
+      source: { soundcloud: 'tracks' },
+      limit: 1
+    }).catch(() => []);
+
+    if (scResults && scResults.length > 0) {
+      const item = scResults[0];
+      track = {
+        title: item.name || item.title || query,
+        url: item.url,
+        duration: item.durationInSec ? Math.floor(item.durationInSec / 60) + ':' + (item.durationInSec % 60 < 10 ? '0' : '') + (item.durationInSec % 60) : 'HQ Audio',
+        thumbnail: item.thumbnail,
+        artist: item.user?.name || 'Artist',
+        requestedBy: interaction.user.id
+      };
     } else {
-      const results = await play.search(query, { limit: 1 });
-      if (results && results.length > 0) {
-        const item = results[0];
-        searchResults.push({
+      // Fallback YouTube search
+      const ytResults = await play.search(query, { limit: 1 }).catch(() => []);
+      if (ytResults && ytResults.length > 0) {
+        const item = ytResults[0];
+        track = {
           title: item.title,
           url: item.url,
           duration: item.durationRaw,
           thumbnail: item.thumbnails[0]?.url,
-          channel: item.channel?.name
-        });
+          artist: item.channel?.name,
+          requestedBy: interaction.user.id
+        };
       }
     }
 
-    if (searchResults.length === 0) {
+    if (!track) {
       return interaction.editReply({
-        embeds: [errorEmbed('No Results Found', 'Could not find any music for `' + query + '`. Try a different song name or direct link.')]
+        embeds: [errorEmbed('No Results Found', 'Could not find any playable music for `' + query + '`. Try another song name!')]
       });
     }
-
-    const track = {
-      ...searchResults[0],
-      requestedBy: interaction.user.id
-    };
 
     const queue = await musicManager.connectVoice(voiceChannel, interaction.channel);
 
@@ -70,10 +72,10 @@ export async function execute(interaction) {
             .setColor(config.colors.primary)
             .setTitle('➕ Added to Queue (Position #' + queue.queue.length + ')')
             .setDescription('**[' + track.title + '](' + track.url + ')**')
-            .setThumbnail(track.thumbnail)
+            .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
             .addFields(
-              { name: '⏱️ Duration', value: track.duration || 'Live', inline: true },
-              { name: '👤 Channel', value: track.channel || 'Unknown', inline: true }
+              { name: '⏱️ Duration', value: track.duration || 'HQ Audio', inline: true },
+              { name: '👤 Artist', value: track.artist || 'Official Audio', inline: true }
             )
             .setFooter({ text: 'Use /queue to see upcoming songs' })
         ]
@@ -84,8 +86,8 @@ export async function execute(interaction) {
           new EmbedBuilder()
             .setColor(config.colors.success)
             .setTitle('🎵 Joining Voice & Playing Song')
-            .setDescription('**[' + track.title + '](' + track.url + ')** in ' + voiceChannel.name)
-            .setThumbnail(track.thumbnail)
+            .setDescription('**[' + track.title + '](' + track.url + ')** in **' + voiceChannel.name + '**')
+            .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
         ]
       });
 
