@@ -3,6 +3,7 @@ import { db } from '../database/db.js';
 import { EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { getAiChatReply } from '../utils/aiChat.js';
+import { musicManager } from '../utils/musicManager.js';
 
 const xpCooldowns = new Set();
 const spamTracker = new Map();
@@ -30,7 +31,7 @@ export async function execute(message, client) {
                      message.content.includes('discord.com/invite/');
       if (isLink) {
         await message.delete().catch(() => {});
-        const warnMsg = await message.channel.send("⚠️ " + message.author.toString() + ", links and invites are not allowed in this server!");
+        const warnMsg = await message.channel.send("⚠️ " + message.author.toString() + ", links are not allowed here!");
         setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
         return;
       }
@@ -38,8 +39,8 @@ export async function execute(message, client) {
 
     // 2. Bad Words
     if (automod.badWords && automod.badWords.length > 0) {
-      const content = message.content.toLowerCase();
-      const hasBadWord = automod.badWords.some(word => content.includes(word.toLowerCase()));
+      const contentLower = message.content.toLowerCase();
+      const hasBadWord = automod.badWords.some(word => contentLower.includes(word.toLowerCase()));
       if (hasBadWord) {
         await message.delete().catch(() => {});
         const warnMsg = await message.channel.send("⚠️ " + message.author.toString() + ", watch your language!");
@@ -106,6 +107,123 @@ export async function execute(message, client) {
     });
   }
 
+  // --- PREFIX MUSIC COMMANDS FOR ALL MEMBERS IN ALL CHANNELS (!play, !p, !skip, etc.) ---
+  const prefix = '!';
+  if (message.content.startsWith(prefix)) {
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const cmd = args.shift().toLowerCase();
+
+    if (cmd === 'play' || cmd === 'p') {
+      const voiceChannel = message.member?.voice.channel;
+      if (!voiceChannel) {
+        return message.reply('❌ You must join a Voice Channel first before playing music!').catch(() => {});
+      }
+      const query = args.join(' ');
+      if (!query) {
+        return message.reply('❌ Please provide a song name or link! Example: `!play Michael Jackson` or `!p Kesariya`').catch(() => {});
+      }
+
+      const statusMsg = await message.reply('🔍 Searching and loading track...').catch(() => {});
+      try {
+        const res = await musicManager.resolveAndPlay(voiceChannel, message.channel, query, message.author);
+        if (statusMsg) statusMsg.delete().catch(() => {});
+
+        if (res.status === 'queued') {
+          message.channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(config.colors.primary)
+                .setTitle('➕ Added to Queue (Position #' + res.position + ')')
+                .setDescription('**[' + res.track.title + '](' + res.track.url + ')**')
+                .setThumbnail(res.track.thumbnail)
+                .addFields(
+                  { name: '👤 Artist', value: res.track.artist, inline: true },
+                  { name: '⏱️ Duration', value: res.track.duration, inline: true }
+                )
+            ]
+          }).catch(() => {});
+        } else {
+          message.channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(config.colors.success)
+                .setTitle('🎵 Playing Track')
+                .setDescription('**[' + res.track.title + '](' + res.track.url + ')** in **' + voiceChannel.name + '**')
+                .setThumbnail(res.track.thumbnail)
+                .addFields(
+                  { name: '👤 Artist', value: res.track.artist, inline: true },
+                  { name: '⏱️ Duration', value: res.track.duration, inline: true }
+                )
+            ]
+          }).catch(() => {});
+        }
+      } catch (err) {
+        if (statusMsg) statusMsg.delete().catch(() => {});
+        if (err.message.startsWith('MISSING_PERMS:')) {
+          message.reply('⚠️ ' + err.message.replace('MISSING_PERMS: ', '')).catch(() => {});
+        } else if (err.message.startsWith('NO_RESULTS:')) {
+          message.reply('❌ Could not find any song matching that title. Try another name!').catch(() => {});
+        } else {
+          message.reply('❌ Could not stream this song. Skipping...').catch(() => {});
+        }
+      }
+      return;
+    }
+
+    if (cmd === 'skip' || cmd === 's') {
+      const voiceChannel = message.member?.voice.channel;
+      if (!voiceChannel) return message.reply('❌ Join a voice channel first!').catch(() => {});
+      const skipped = musicManager.skip(guildId);
+      return message.reply(skipped ? '⏭️ Track skipped!' : '❌ No track is currently playing.').catch(() => {});
+    }
+
+    if (cmd === 'pause') {
+      const paused = musicManager.pause(guildId);
+      return message.reply(paused ? '⏸️ Playback paused.' : '❌ Nothing is currently playing.').catch(() => {});
+    }
+
+    if (cmd === 'resume') {
+      const resumed = musicManager.resume(guildId);
+      return message.reply(resumed ? '▶️ Playback resumed.' : '❌ Music is not paused.').catch(() => {});
+    }
+
+    if (cmd === 'stop' || cmd === 'leave' || cmd === 'dc') {
+      musicManager.stop(guildId);
+      return message.reply('⏹️ Stopped playback and cleared queue.').catch(() => {});
+    }
+
+    if (cmd === 'queue' || cmd === 'q') {
+      const q = musicManager.getQueue(guildId);
+      if (!q.currentTrack && q.queue.length === 0) {
+        return message.reply('📜 The queue is empty.').catch(() => {});
+      }
+      const embed = new EmbedBuilder()
+        .setColor(config.colors.primary)
+        .setTitle('🎶 Server Music Queue')
+        .setDescription(
+          '**Now Playing:** ' + (q.currentTrack ? q.currentTrack.title : 'None') + '\n\n' + 
+          (q.queue.length > 0 ? q.queue.slice(0, 10).map((t, i) => `${i + 1}. **${t.title}**`).join('\n') : 'No upcoming songs.')
+        );
+      return message.reply({ embeds: [embed] }).catch(() => {});
+    }
+
+    if (cmd === 'volume' || cmd === 'vol') {
+      const vol = parseInt(args[0]);
+      if (isNaN(vol) || vol < 1 || vol > 150) {
+        return message.reply('❌ Please enter a volume level between 1 and 150. Example: `!vol 80`').catch(() => {});
+      }
+      const q = musicManager.getQueue(guildId);
+      q.volume = vol;
+      return message.reply('🔊 Volume set to **' + vol + '%**').catch(() => {});
+    }
+
+    if (cmd === 'loop') {
+      const q = musicManager.getQueue(guildId);
+      q.isLooping = !q.isLooping;
+      return message.reply('🔁 Loop mode is now **' + (q.isLooping ? 'ENABLED' : 'DISABLED') + '**').catch(() => {});
+    }
+  }
+
   // --- AUTO AI CHATBOT SYSTEM ---
   const isAiChannel = guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel;
   const isBotMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
@@ -158,9 +276,8 @@ export async function execute(message, client) {
       if (guildSettings.levelRoles && guildSettings.levelRoles[newLevel]) {
         const roleId = guildSettings.levelRoles[newLevel];
         const role = message.guild.roles.cache.get(roleId);
-        if (role) {
+        if (role && !message.member.roles.cache.has(roleId)) {
           message.member.roles.add(role).catch(() => {});
-          message.channel.send("🏆 " + message.author.toString() + " unlocked the **" + role.name + "** role!").catch(() => {});
         }
       }
     }
