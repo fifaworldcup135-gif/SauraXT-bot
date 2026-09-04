@@ -125,15 +125,15 @@ export async function execute(message, client) {
 
       const statusMsg = await message.reply('🔍 Searching and loading track...').catch(() => {});
       try {
-        const res = await musicManager.resolveAndPlay(voiceChannel, message.channel, query, message.author);
+        const res = await musicManager.resolveAndPlay(voiceChannel, message.channel, query, message.member, guildSettings);
         if (statusMsg) statusMsg.delete().catch(() => {});
 
         if (res.status === 'queued') {
           message.channel.send({
             embeds: [
               new EmbedBuilder()
-                .setColor(config.colors.primary)
-                .setTitle('➕ Added to Queue (Position #' + res.position + ')')
+                .setColor(res.isVip ? '#FFD700' : config.colors.primary)
+                .setTitle(res.isVip ? '👑 VIP Added to Queue (Position #' + res.position + ')' : '➕ Added to Queue (Position #' + res.position + ')')
                 .setDescription('**[' + res.track.title + '](' + res.track.url + ')**')
                 .setThumbnail(res.track.thumbnail)
                 .addFields(
@@ -146,8 +146,8 @@ export async function execute(message, client) {
           message.channel.send({
             embeds: [
               new EmbedBuilder()
-                .setColor(config.colors.success)
-                .setTitle('🎵 Playing Track')
+                .setColor(res.isVip ? '#FFD700' : config.colors.success)
+                .setTitle(res.isVip ? '👑 VIP Lounge • Now Playing' : '🎵 Playing Track')
                 .setDescription('**[' + res.track.title + '](' + res.track.url + ')** in **' + voiceChannel.name + '**')
                 .setThumbnail(res.track.thumbnail)
                 .addFields(
@@ -159,7 +159,14 @@ export async function execute(message, client) {
         }
       } catch (err) {
         if (statusMsg) statusMsg.delete().catch(() => {});
-        if (err.message.startsWith('MISSING_PERMS:')) {
+        if (err.message.startsWith('VIP_RESTRICTED:')) {
+          const vipEmbed = new EmbedBuilder()
+            .setColor('#FF69B4')
+            .setTitle('🔒 VIP Exclusive Lounge')
+            .setDescription(err.message.replace('VIP_RESTRICTED: ', ''))
+            .setFooter({ text: 'Upgrade to VIP / Boost Server to unlock VIP Lounge access!' });
+          return message.reply({ embeds: [vipEmbed] }).catch(() => {});
+        } else if (err.message.startsWith('MISSING_PERMS:')) {
           message.reply('⚠️ ' + err.message.replace('MISSING_PERMS: ', '')).catch(() => {});
         } else if (err.message.startsWith('NO_RESULTS:')) {
           message.reply('❌ Could not find any song matching that title. Try another name!').catch(() => {});
