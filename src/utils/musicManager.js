@@ -36,12 +36,20 @@ class MusicManager {
         connection: null,
         player: null,
         queue: [],
+        previousTracks: [],
         currentTrack: null,
         isPlaying: false,
         isPaused: false,
         isLooping: false,
+        loopQueue: false,
+        autoplay: false,
         volume: 100,
-        idleTimer: null
+        startedAt: 0,
+        idleTimer: null,
+        sessionStats: {
+          startTime: Date.now(),
+          tracksPlayed: 0
+        }
       });
     }
     return this.queues.get(guildId);
@@ -87,8 +95,31 @@ class MusicManager {
     return tName.includes('vip') || tCategory.includes('vip') || vName.includes('vip') || vCategory.includes('vip');
   }
 
-  createControllerButtons(isPaused = false, isLooping = false, isVip = false) {
-    const row = new ActionRowBuilder().addComponents(
+  getProgressBar(currentSec, totalSec = 180, barSize = 14) {
+    if (isNaN(currentSec)) currentSec = 0;
+    if (isNaN(totalSec) || totalSec <= 0) totalSec = 180;
+    const progress = Math.min(Math.max(currentSec / totalSec, 0), 1);
+    const progressChars = Math.round(barSize * progress);
+    const emptyChars = barSize - progressChars;
+
+    const formatS = s => {
+      const mins = Math.floor(s / 60);
+      const secs = Math.floor(s % 60);
+      return (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+    };
+
+    const bar = '▬'.repeat(Math.max(progressChars - 1, 0)) + '🔘' + '▬'.repeat(emptyChars);
+    return '`' + formatS(currentSec) + '` ' + bar + ' `' + formatS(totalSec) + '`';
+  }
+
+  createControllerButtons(isPaused = false, isLooping = false, isVip = false, hasPrevious = false) {
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('music_back')
+        .setLabel('Back')
+        .setEmoji('⏮️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!hasPrevious),
       new ButtonBuilder()
         .setCustomId('music_pause')
         .setLabel(isPaused ? 'Resume' : 'Pause')
@@ -106,49 +137,73 @@ class MusicManager {
         .setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('music_stop')
-        .setLabel('Stop & Leave')
+        .setLabel('Stop')
         .setEmoji('⏹️')
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('music_fav')
+        .setLabel('Favorite')
+        .setEmoji('⭐')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('music_queue')
-        .setLabel('View Queue')
+        .setLabel('Queue')
         .setEmoji('📜')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('music_lyrics')
+        .setLabel('Lyrics')
+        .setEmoji('🎤')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('music_shuffle')
+        .setLabel('Shuffle')
+        .setEmoji('🔀')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('music_boost')
+        .setLabel('Boost')
+        .setEmoji('🔊')
         .setStyle(ButtonStyle.Secondary)
     );
-    return row;
+
+    return [row1, row2];
   }
 
-  createNowPlayingEmbed(track, isPaused = false, isLooping = false) {
-    if (track.isVip) {
-      return new EmbedBuilder()
-        .setColor('#FFD700') // Luxury VIP Gold
-        .setTitle('👑 VIP EXCLUSIVE LOUNGE • ' + (track.title || track.name))
-        .setURL(track.url)
-        .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
-        .addFields(
-          { name: '💎 VIP Requester', value: track.requestedBy ? `<@${track.requestedBy}> ⭐ VIP Pass` : '👑 VIP Member', inline: true },
-          { name: '🎙️ VIP Lounge', value: '`' + (track.loungeName || 'VIP Hangout') + '`', inline: true },
-          { name: '⏱️ Duration', value: track.duration || 'HQ Audio', inline: true },
-          { name: '🎚️ Audio Fidelity', value: '💎 `384kbps Ultra HD Lossless`', inline: true },
-          { name: '👤 Artist / Channel', value: track.artist || track.channel || 'Official Studio Track', inline: true },
-          { name: '⚡ VIP Priority', value: '`24/7 Dedicated VIP Stream`', inline: true }
-        )
-        .setFooter({ text: '💎 SAURAXT VIP Audio Suite • Status: ' + (isPaused ? 'Paused ⏸️' : 'Playing ▶️') + ' • Loop: ' + (isLooping ? 'ON 🔁' : 'OFF') })
-        .setTimestamp();
-    }
+  createNowPlayingEmbed(track, isPaused = false, isLooping = false, queue = null) {
+    const elapsedSec = queue && queue.startedAt ? Math.floor((Date.now() - queue.startedAt) / 1000) : 0;
+    const totalSec = track.durationSec || 210;
+    const progressBar = this.getProgressBar(elapsedSec, totalSec);
 
-    return new EmbedBuilder()
-      .setColor(config.colors.purple)
-      .setTitle('🎶 Now Playing: ' + (track.title || track.name))
+    let embedColor = '#5865F2'; // Lunar Blue
+    if (track.isVip) embedColor = '#FFD700'; // VIP Gold
+    else if (track.url?.includes('spotify')) embedColor = '#1DB954';
+    else if (track.url?.includes('soundcloud')) embedColor = '#FF5500';
+
+    const upNextTrack = queue && queue.queue.length > 0 ? queue.queue[0] : null;
+
+    const embed = new EmbedBuilder()
+      .setColor(embedColor)
+      .setTitle(track.isVip ? '👑 VIP EXCLUSIVE • ' + (track.title || track.name) : '🎶 Now Playing • ' + (track.title || track.name))
       .setURL(track.url)
       .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
-      .addFields(
-        { name: '👤 Artist / Channel', value: track.channel || track.artist || 'Official Track', inline: true },
-        { name: '⏱️ Duration', value: track.duration || 'HQ Audio', inline: true },
-        { name: '🙋 Requested By', value: track.requestedBy ? '<@' + track.requestedBy + '>' : 'DJ', inline: true }
+      .setDescription(
+        '👤 **Artist:** `' + (track.artist || track.channel || 'Official Artist') + '`\n' +
+        '⏱️ **Progress:**\n' + progressBar + '\n'
       )
-      .setFooter({ text: 'Status: ' + (isPaused ? 'Paused ⏸️' : 'Playing ▶️') + ' • Loop: ' + (isLooping ? 'ON 🔁' : 'OFF') })
+      .addFields(
+        { name: '🔊 Audio Fidelity', value: track.isVip ? '💎 `384kbps Ultra HD`' : '⚡ `320kbps Lossless`', inline: true },
+        { name: '🙋 Requester', value: track.requestedBy ? `<@${track.requestedBy}>` : 'DJ', inline: true },
+        { name: '🔁 Loop Mode', value: isLooping ? '`Track Loop 🔂`' : '`Off`', inline: true },
+        { name: '📻 Up Next', value: upNextTrack ? `**[${upNextTrack.title}](${upNextTrack.url})** (\`${upNextTrack.duration || 'HQ'}\`)` : '`End of queue. Autoplay active.`', inline: false }
+      )
+      .setFooter({ text: '🌙 SauraXT & Lunar Audio Suite • Status: ' + (isPaused ? 'Paused ⏸️' : 'Playing ▶️') })
       .setTimestamp();
+
+    return embed;
   }
 
   async connectVoice(voiceChannel, textChannel) {
@@ -188,16 +243,14 @@ class MusicManager {
   }
 
   async resolveAndPlay(voiceChannel, textChannel, rawQuery, member, guildSettings = {}) {
-    // 1. Check Voice Permissions
     const botMember = voiceChannel.guild.members.me;
     if (botMember) {
       const perms = voiceChannel.permissionsFor(botMember);
       if (!perms.has(PermissionFlagsBits.ViewChannel) || !perms.has(PermissionFlagsBits.Connect) || !perms.has(PermissionFlagsBits.Speak)) {
-        throw new Error('MISSING_PERMS: I need View Channel, Connect, and Speak permissions in `' + voiceChannel.name + '`! Please give SauraXT the Administrator permission in Server Settings.');
+        throw new Error('MISSING_PERMS: I need View Channel, Connect, and Speak permissions in `' + voiceChannel.name + '`! Please give SauraXT Administrator permissions in Server Settings.');
       }
     }
 
-    // 2. VIP Lounge Protection Check
     const inVipLounge = this.isVipLounge(textChannel, voiceChannel, guildSettings);
     const isVip = this.isVipMember(member, guildSettings);
 
@@ -209,8 +262,8 @@ class MusicManager {
     let trackThumbnail = null;
     let trackTitle = null;
     let trackArtist = null;
+    let trackDurationSec = 180;
 
-    // A. Resolve YouTube metadata if URL
     if (searchQuery.includes('youtube.com') || searchQuery.includes('youtu.be')) {
       const ytInfo = await play.video_basic_info(searchQuery).catch(() => null);
       if (ytInfo && ytInfo.video_details) {
@@ -218,10 +271,10 @@ class MusicManager {
         trackTitle = ytInfo.video_details.title;
         trackArtist = ytInfo.video_details.channel?.name || 'Artist';
         trackThumbnail = ytInfo.video_details.thumbnails[0]?.url;
+        trackDurationSec = ytInfo.video_details.durationInSec || 180;
       }
     }
 
-    // B. Resolve Spotify metadata if URL
     if (searchQuery.includes('spotify.com')) {
       const spType = play.sp_validate(searchQuery);
       if (spType === 'track') {
@@ -231,11 +284,11 @@ class MusicManager {
           trackTitle = spData.name;
           trackArtist = spData.artists ? spData.artists[0]?.name : 'Artist';
           trackThumbnail = spData.thumbnail?.url;
+          trackDurationSec = spData.durationInSec || 180;
         }
       }
     }
 
-    // C. Search High-Reliability Audio Provider
     let track = null;
     const scResults = await play.search(searchQuery, {
       source: { soundcloud: 'tracks' },
@@ -244,10 +297,12 @@ class MusicManager {
 
     if (scResults && scResults.length > 0) {
       const item = scResults[0];
+      const durSec = item.durationInSec || trackDurationSec || 180;
       track = {
         title: trackTitle || item.name || item.title || searchQuery,
         url: item.url,
-        duration: item.durationInSec ? Math.floor(item.durationInSec / 60) + ':' + (item.durationInSec % 60 < 10 ? '0' : '') + (item.durationInSec % 60) : 'HQ Audio',
+        duration: Math.floor(durSec / 60) + ':' + (durSec % 60 < 10 ? '0' : '') + (durSec % 60),
+        durationSec: durSec,
         thumbnail: trackThumbnail || item.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
         artist: trackArtist || item.user?.name || 'Official Artist',
         requestedBy: member.id,
@@ -262,6 +317,7 @@ class MusicManager {
           title: item.title,
           url: item.url,
           duration: item.durationRaw,
+          durationSec: item.durationInSec || 180,
           thumbnail: item.thumbnails[0]?.url,
           artist: item.channel?.name || 'Artist',
           requestedBy: member.id,
@@ -288,13 +344,25 @@ class MusicManager {
 
   async playTrack(guildId, track) {
     const queue = this.getQueue(guildId);
+    if (queue.currentTrack) {
+      queue.previousTracks.push(queue.currentTrack);
+      if (queue.previousTracks.length > 20) queue.previousTracks.shift();
+    }
+
     queue.currentTrack = track;
     queue.isPlaying = true;
     queue.isPaused = false;
+    queue.startedAt = Date.now();
+    queue.sessionStats.tracksPlayed++;
 
     if (queue.idleTimer) {
       clearTimeout(queue.idleTimer);
       queue.idleTimer = null;
+    }
+
+    // Set Lunar Voice Channel Status
+    if (queue.voiceChannel && queue.voiceChannel.setStatus) {
+      queue.voiceChannel.setStatus('🎶 ' + (track.title.length > 45 ? track.title.slice(0, 42) + '...' : track.title)).catch(() => {});
     }
 
     try {
@@ -322,9 +390,9 @@ class MusicManager {
       queue.player.play(resource);
 
       if (queue.textChannel) {
-        const embed = this.createNowPlayingEmbed(track, false, queue.isLooping);
-        const row = this.createControllerButtons(false, queue.isLooping, track.isVip);
-        queue.textChannel.send({ embeds: [embed], components: [row] }).catch(() => {});
+        const embed = this.createNowPlayingEmbed(track, false, queue.isLooping, queue);
+        const components = this.createControllerButtons(false, queue.isLooping, track.isVip, queue.previousTracks.length > 0);
+        queue.textChannel.send({ embeds: [embed], components }).catch(() => {});
       }
     } catch (err) {
       console.error('Failed to stream audio:', err);
@@ -335,23 +403,118 @@ class MusicManager {
     }
   }
 
-  playNext(guildId) {
+  async playNext(guildId) {
     const queue = this.getQueue(guildId);
     if (queue.queue.length > 0) {
       const nextTrack = queue.queue.shift();
       this.playTrack(guildId, nextTrack);
-    } else {
-      queue.currentTrack = null;
-      queue.isPlaying = false;
-
+    } else if (queue.autoplay && queue.currentTrack) {
+      // Autoplay feature: fetch related track
       if (queue.textChannel) {
-        queue.textChannel.send('🎵 Queue has ended. Leaving in 5m if idle.').catch(() => {});
+        queue.textChannel.send('🎲 **Autoplay:** Finding similar song to keep the vibes going...').catch(() => {});
       }
-
-      queue.idleTimer = setTimeout(() => {
-        this.stop(guildId);
-      }, 5 * 60 * 1000);
+      try {
+        const query = queue.currentTrack.artist || queue.currentTrack.title;
+        const related = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 5 }).catch(() => []);
+        const filtered = related.filter(r => r.url !== queue.currentTrack.url);
+        if (filtered.length > 0) {
+          const item = filtered[Math.floor(Math.random() * filtered.length)];
+          const durSec = item.durationInSec || 180;
+          const autoTrack = {
+            title: item.name || item.title,
+            url: item.url,
+            duration: Math.floor(durSec / 60) + ':' + (durSec % 60 < 10 ? '0' : '') + (durSec % 60),
+            durationSec: durSec,
+            thumbnail: item.thumbnail,
+            artist: item.user?.name || 'Recommended Artist',
+            requestedBy: null,
+            isVip: queue.currentTrack.isVip,
+            loungeName: queue.voiceChannel?.name
+          };
+          return this.playTrack(guildId, autoTrack);
+        }
+      } catch (err) {
+        console.error('Autoplay error:', err);
+      }
+      this.finishPlayback(guildId);
+    } else {
+      this.finishPlayback(guildId);
     }
+  }
+
+  finishPlayback(guildId) {
+    const queue = this.getQueue(guildId);
+    queue.currentTrack = null;
+    queue.isPlaying = false;
+
+    // Reset voice channel status
+    if (queue.voiceChannel && queue.voiceChannel.setStatus) {
+      queue.voiceChannel.setStatus('').catch(() => {});
+    }
+
+    if (queue.textChannel) {
+      const sessionMinutes = Math.max(1, Math.round((Date.now() - queue.sessionStats.startTime) / 60000));
+      const summaryEmbed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('📊 Music Session Ended')
+        .setDescription(
+          'Queue is finished! Leaving the voice channel in 5m if idle.\n\n' +
+          '🎵 **Tracks Played:** `' + queue.sessionStats.tracksPlayed + '`\n' +
+          '⏱️ **Session Duration:** `' + sessionMinutes + ' min`\n' +
+          '💡 *Tip: Use `/autoplay` to keep music playing indefinitely!*'
+        )
+        .setFooter({ text: 'SauraXT & Lunar Audio Engine' })
+        .setTimestamp();
+
+      queue.textChannel.send({ embeds: [summaryEmbed] }).catch(() => {});
+    }
+
+    queue.idleTimer = setTimeout(() => {
+      this.stop(guildId);
+    }, 5 * 60 * 1000);
+  }
+
+  playPrevious(guildId) {
+    const queue = this.getQueue(guildId);
+    if (queue.previousTracks.length === 0) return false;
+    const prev = queue.previousTracks.pop();
+    if (queue.currentTrack) {
+      queue.queue.unshift(queue.currentTrack);
+    }
+    this.playTrack(guildId, prev);
+    return prev;
+  }
+
+  shuffle(guildId) {
+    const queue = this.getQueue(guildId);
+    if (queue.queue.length < 2) return false;
+    for (let i = queue.queue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [queue.queue[i], queue.queue[j]] = [queue.queue[j], queue.queue[i]];
+    }
+    return true;
+  }
+
+  clearQueue(guildId) {
+    const queue = this.getQueue(guildId);
+    const count = queue.queue.length;
+    queue.queue = [];
+    return count;
+  }
+
+  removeTrack(guildId, index) {
+    const queue = this.getQueue(guildId);
+    if (index < 0 || index >= queue.queue.length) return null;
+    const removed = queue.queue.splice(index, 1);
+    return removed[0];
+  }
+
+  moveTrack(guildId, fromIndex, toIndex) {
+    const queue = this.getQueue(guildId);
+    if (fromIndex < 0 || fromIndex >= queue.queue.length || toIndex < 0 || toIndex >= queue.queue.length) return false;
+    const [track] = queue.queue.splice(fromIndex, 1);
+    queue.queue.splice(toIndex, 0, track);
+    return true;
   }
 
   skip(guildId) {
@@ -383,9 +546,20 @@ class MusicManager {
     return false;
   }
 
+  toggleAutoplay(guildId) {
+    const queue = this.getQueue(guildId);
+    queue.autoplay = !queue.autoplay;
+    return queue.autoplay;
+  }
+
   stop(guildId) {
     const queue = this.getQueue(guildId);
+    if (queue.voiceChannel && queue.voiceChannel.setStatus) {
+      queue.voiceChannel.setStatus('').catch(() => {});
+    }
+
     queue.queue = [];
+    queue.previousTracks = [];
     queue.currentTrack = null;
     queue.isPlaying = false;
     queue.isPaused = false;

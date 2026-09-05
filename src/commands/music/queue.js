@@ -20,13 +20,13 @@ export async function execute(interaction) {
   });
 
   const embed = new EmbedBuilder()
-    .setColor(config.colors.purple)
+    .setColor('#5865F2')
     .setTitle('📜 Music Playback Queue')
     .addFields(
-      { name: '🎶 Now Playing', value: current ? '**[' + current.title + '](' + current.url + ')** (`' + (current.duration || 'Live') + '`)' : 'None', inline: false },
-      { name: '📋 Upcoming Songs (' + queue.queue.length + ' Total)', value: list.length > 0 ? list.join('\n\n') : '*No upcoming tracks in queue.*', inline: false }
+      { name: '🎶 Now Playing', value: current ? `**[${current.title}](${current.url})** (\`${current.duration || 'Live'}\`)` : '*None*', inline: false },
+      { name: `📋 Upcoming Songs (${queue.queue.length} Total)`, value: list.length > 0 ? list.join('\n\n') : '*No upcoming tracks in queue.*', inline: false }
     )
-    .setFooter({ text: 'Loop: ' + (queue.isLooping ? 'ON 🔁' : 'OFF') + ' • Volume: ' + queue.volume + '%' })
+    .setFooter({ text: `Loop: ${queue.isLooping ? 'ON 🔁' : 'OFF'} • Autoplay: ${queue.autoplay ? 'ON ✨' : 'OFF'} • Volume: ${queue.volume}%` })
     .setTimestamp();
 
   return interaction.reply({ embeds: [embed] });

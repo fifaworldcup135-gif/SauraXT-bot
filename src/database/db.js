@@ -115,11 +115,84 @@ class Database {
         lastRob: 0,
         shieldUntil: 0,
         inventory: {},
+        favorites: [],
+        playlists: {},
         createdAt: Date.now()
       };
       this.save();
     }
+    // Ensure backwards compatibility for existing user objects
+    if (!this.data.users[key].favorites) this.data.users[key].favorites = [];
+    if (!this.data.users[key].playlists) this.data.users[key].playlists = {};
     return this.data.users[key];
+  }
+
+  addFavorite(guildId, userId, track) {
+    const user = this.getUser(guildId, userId);
+    user.favorites = user.favorites || [];
+    if (!user.favorites.some(f => f.url === track.url)) {
+      user.favorites.push({
+        title: track.title,
+        url: track.url,
+        duration: track.duration,
+        artist: track.artist,
+        thumbnail: track.thumbnail,
+        addedAt: Date.now()
+      });
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  getFavorites(guildId, userId) {
+    const user = this.getUser(guildId, userId);
+    return user.favorites || [];
+  }
+
+  removeFavorite(guildId, userId, index) {
+    const user = this.getUser(guildId, userId);
+    if (!user.favorites || index < 0 || index >= user.favorites.length) return null;
+    const removed = user.favorites.splice(index, 1);
+    this.save();
+    return removed[0];
+  }
+
+  savePlaylist(guildId, userId, name, tracks) {
+    const user = this.getUser(guildId, userId);
+    user.playlists = user.playlists || {};
+    user.playlists[name.toLowerCase()] = {
+      name,
+      tracks: tracks.map(t => ({
+        title: t.title,
+        url: t.url,
+        duration: t.duration,
+        artist: t.artist,
+        thumbnail: t.thumbnail
+      })),
+      updatedAt: Date.now()
+    };
+    this.save();
+    return user.playlists[name.toLowerCase()];
+  }
+
+  getPlaylists(guildId, userId) {
+    const user = this.getUser(guildId, userId);
+    return user.playlists || {};
+  }
+
+  getPlaylist(guildId, userId, name) {
+    const user = this.getUser(guildId, userId);
+    if (!user.playlists) return null;
+    return user.playlists[name.toLowerCase()] || null;
+  }
+
+  deletePlaylist(guildId, userId, name) {
+    const user = this.getUser(guildId, userId);
+    if (!user.playlists || !user.playlists[name.toLowerCase()]) return false;
+    delete user.playlists[name.toLowerCase()];
+    this.save();
+    return true;
   }
 
   updateUser(guildId, userId, updates) {

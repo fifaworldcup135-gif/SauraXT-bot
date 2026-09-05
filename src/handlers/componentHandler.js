@@ -12,11 +12,21 @@ import { db } from '../database/db.js';
 import { config } from '../config.js';
 import { successEmbed, errorEmbed, infoEmbed } from '../utils/embeds.js';
 import { musicManager } from '../utils/musicManager.js';
+import { getLyrics } from '../utils/lyrics.js';
 
 export async function handleComponentInteraction(interaction, client) {
   const customId = interaction.customId;
 
-  // --- 0. MUSIC CONTROLLER BUTTONS ---
+  // --- 0. MUSIC CONTROLLER BUTTONS (Groove + Lunar Suite) ---
+  if (customId === 'music_back') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    if (!queue.previousTracks || queue.previousTracks.length === 0) {
+      return interaction.reply({ content: '⏮️ No previous tracks in playback history.', ephemeral: true });
+    }
+    const prev = musicManager.playPrevious(interaction.guildId);
+    return interaction.reply({ content: `⏮️ Playing previous track: **${prev ? prev.title : 'Previous Track'}**!`, ephemeral: false });
+  }
+
   if (customId === 'music_pause') {
     const queue = musicManager.getQueue(interaction.guildId);
     if (!queue.currentTrack) {
@@ -25,14 +35,14 @@ export async function handleComponentInteraction(interaction, client) {
 
     if (queue.isPaused) {
       musicManager.resume(interaction.guildId);
-      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, false, queue.isLooping);
-      const row = musicManager.createControllerButtons(false, queue.isLooping);
-      return interaction.update({ embeds: [embed], components: [row] });
+      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, false, queue.isLooping, queue);
+      const components = musicManager.createControllerButtons(false, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+      return interaction.update({ embeds: [embed], components });
     } else {
       musicManager.pause(interaction.guildId);
-      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, true, queue.isLooping);
-      const row = musicManager.createControllerButtons(true, queue.isLooping);
-      return interaction.update({ embeds: [embed], components: [row] });
+      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, true, queue.isLooping, queue);
+      const components = musicManager.createControllerButtons(true, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+      return interaction.update({ embeds: [embed], components });
     }
   }
 
@@ -51,14 +61,33 @@ export async function handleComponentInteraction(interaction, client) {
       return interaction.reply({ content: '❌ No music is currently playing.', ephemeral: true });
     }
     queue.isLooping = !queue.isLooping;
-    const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping);
-    const row = musicManager.createControllerButtons(queue.isPaused, queue.isLooping);
-    return interaction.update({ embeds: [embed], components: [row] });
+    const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
+    const components = musicManager.createControllerButtons(queue.isPaused, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+    return interaction.update({ embeds: [embed], components });
   }
 
   if (customId === 'music_stop') {
     musicManager.stop(interaction.guildId);
     return interaction.reply({ content: '⏹️ Playback stopped and disconnected by ' + interaction.user.toString() + '.', ephemeral: false });
+  }
+
+  if (customId === 'music_fav') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    if (!queue.currentTrack) {
+      return interaction.reply({ content: '❌ No music is currently playing to favorite.', ephemeral: true });
+    }
+    const added = db.addFavorite(interaction.guildId, interaction.user.id, queue.currentTrack);
+    if (added) {
+      return interaction.reply({
+        content: `⭐ Added **[${queue.currentTrack.title}](${queue.currentTrack.url})** to your personal Favorites!\nUse \`/favorite list\` or \`/favorite play\` anytime.`,
+        ephemeral: true
+      });
+    } else {
+      return interaction.reply({
+        content: `⭐ **${queue.currentTrack.title}** is already in your Favorites list!`,
+        ephemeral: true
+      });
+    }
   }
 
   if (customId === 'music_queue') {
@@ -67,13 +96,57 @@ export async function handleComponentInteraction(interaction, client) {
       return interaction.reply({ content: '📜 Queue is empty.', ephemeral: true });
     }
     const current = queue.currentTrack;
-    const list = queue.queue.slice(0, 5).map((t, idx) => '**' + (idx + 1) + '.** ' + t.title + ' (`' + (t.duration || 'Live') + '`)');
+    const list = queue.queue.slice(0, 10).map((t, idx) => '**' + (idx + 1) + '.** ' + t.title + ' (`' + (t.duration || 'Live') + '`)');
     const embed = new EmbedBuilder()
-      .setColor(config.colors.purple)
+      .setColor('#5865F2')
       .setTitle('📜 Playback Queue')
-      .setDescription('**Now Playing:** ' + (current ? current.title : 'None') + '\n\n**Next Up:**\n' + (list.length > 0 ? list.join('\n') : '*No upcoming tracks.*'))
-      .setFooter({ text: 'Total in queue: ' + queue.queue.length });
+      .setDescription('**Now Playing:** ' + (current ? `[${current.title}](${current.url})` : 'None') + '\n\n**Next Up:**\n' + (list.length > 0 ? list.join('\n') : '*No upcoming tracks.*'))
+      .setFooter({ text: `Total in queue: ${queue.queue.length} • Loop: ${queue.isLooping ? 'ON 🔂' : 'OFF'} • Autoplay: ${queue.autoplay ? 'ON ✨' : 'OFF'}` });
     return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+
+  if (customId === 'music_lyrics') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    if (!queue.currentTrack) {
+      return interaction.reply({ content: '❌ No music is currently playing to get lyrics for.', ephemeral: true });
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const lyricsData = await getLyrics(queue.currentTrack.title, queue.currentTrack.artist);
+    if (!lyricsData || !lyricsData.lyrics) {
+      return interaction.editReply({
+        content: `❌ Could not find lyrics for **${queue.currentTrack.title}**. Try using \`/lyrics query: <Song Title> <Artist>\`!`
+      });
+    }
+    let lyricsText = lyricsData.lyrics;
+    if (lyricsText.length > 4000) {
+      lyricsText = lyricsText.substring(0, 3950) + '\n\n... *(lyrics truncated due to Discord length limit)*';
+    }
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setTitle(`🎤 Lyrics • ${lyricsData.title}`)
+      .setAuthor({ name: lyricsData.artist ? `Artist: ${lyricsData.artist}` : 'Song Lyrics' })
+      .setDescription(lyricsText)
+      .setFooter({ text: `LRCLIB Synced Engine • ${lyricsData.synced ? 'Timestamped Synced' : 'Plain Text'}` })
+      .setTimestamp();
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  if (customId === 'music_shuffle') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    if (queue.queue.length < 2) {
+      return interaction.reply({ content: '🔀 Need at least 2 upcoming tracks in the queue to shuffle.', ephemeral: true });
+    }
+    musicManager.shuffle(interaction.guildId);
+    return interaction.reply({ content: `🔀 Successfully shuffled **${queue.queue.length}** tracks in the queue!`, ephemeral: false });
+  }
+
+  if (customId === 'music_boost') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    queue.volume = queue.volume >= 150 ? 100 : queue.volume + 25;
+    return interaction.reply({
+      content: `🔊 **Audio Fidelity Boost:** Audio output set to **${queue.volume}%** (Enhanced Bass & Dynamics)!`,
+      ephemeral: true
+    });
   }
 
   // --- 1. BUTTON ROLE TOGGLE ---

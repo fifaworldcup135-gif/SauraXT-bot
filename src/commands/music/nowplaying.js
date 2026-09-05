@@ -13,8 +13,8 @@ export async function execute(interaction) {
     return interaction.reply({ embeds: [errorEmbed('Nothing Playing', 'There is no music currently active.')], ephemeral: true });
   }
 
-  const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping);
-  const row = musicManager.createControllerButtons(queue.isPaused, queue.isLooping);
+  const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
+  const components = musicManager.createControllerButtons(queue.isPaused, queue.isLooping, queue.currentTrack?.isVip, queue.previousTracks.length > 0);
 
-  return interaction.reply({ embeds: [embed], components: [row] });
+  return interaction.reply({ embeds: [embed], components });
 }
