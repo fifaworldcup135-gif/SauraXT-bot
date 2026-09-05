@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { musicManager } from '../../utils/musicManager.js';
 import { errorEmbed } from '../../utils/embeds.js';
 import { getPlatformEmoji } from '../../utils/lunarMetadata.js';
+import { config } from '../../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('queue')
@@ -58,12 +59,14 @@ export async function execute(interaction) {
 
   const botName = interaction.client.user?.username || 'SauraXT';
   const embed = new EmbedBuilder()
+    .setAuthor({ name: 'Upcoming Queue', iconURL: config.assets.logoGif })
     .setTitle(`🎧 Queue for ${voiceChannelName}`)
     .setDescription(pageDescription || 'No songs in queue')
+    .setThumbnail(config.assets.vinyl)
     .setColor('#6A5ACD')
     .setFooter({ 
       text: `${botName}  •  Page ${page}/${totalPages}  •  Queue ${totalDurationStr}`,
-      iconURL: interaction.client.user?.displayAvatarURL() || undefined
+      iconURL: interaction.client.user?.displayAvatarURL() || config.assets.logoGif
     });
 
   return interaction.reply({ embeds: [embed] });

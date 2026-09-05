@@ -1,6 +1,7 @@
-﻿import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { musicManager } from '../../utils/musicManager.js';
 import { errorEmbed } from '../../utils/embeds.js';
+import { config } from '../../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('save')
@@ -34,11 +35,11 @@ export async function execute(interaction) {
     )
     .setFooter({
       text: `${botName} • Personal Music Library`,
-      iconURL: interaction.client.user?.displayAvatarURL() || undefined
+      iconURL: interaction.client.user?.displayAvatarURL() || config.assets.logoGif
     })
     .setTimestamp();
 
-  if (track.thumbnail) dmEmbed.setThumbnail(track.thumbnail);
+  dmEmbed.setThumbnail(track.thumbnail || config.assets.vinyl);
 
   try {
     await interaction.user.send({ embeds: [dmEmbed] });

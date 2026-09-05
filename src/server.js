@@ -5,6 +5,8 @@ export function startKeepAliveServer(client) {
   const app = express();
   const port = process.env.PORT || 3000;
 
+  app.use('/assets', express.static('assets'));
+
   app.get('/', (req, res) => {
     const uptimeSec = Math.floor(process.uptime());
     const hours = Math.floor(uptimeSec / 3600);
@@ -23,6 +25,7 @@ export function startKeepAliveServer(client) {
           * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
           body { background: #0f111a; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
           .card { background: #1a1d2d; border-radius: 16px; padding: 32px; max-width: 520px; width: 90%; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #2a2e45; text-align: center; }
+          .logo-img { width: 64px; height: 64px; border-radius: 50%; margin-bottom: 16px; box-shadow: 0 0 15px rgba(106, 90, 205, 0.6); }
           .status { display: inline-flex; align-items: center; gap: 10px; font-size: 20px; font-weight: bold; margin-bottom: 12px; }
           .dot { width: 14px; height: 14px; background: #57F287; border-radius: 50%; box-shadow: 0 0 10px #57F287; animation: pulse 2s infinite; }
           @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
@@ -35,6 +38,7 @@ export function startKeepAliveServer(client) {
       </head>
       <body>
         <div class="card">
+          <img class="logo-img" src="${config.assets.logoGif}" alt="SauraXT Logo">
           <div class="status">
             <div class="dot"></div>
             <span>${config.botName} is ONLINE</span>

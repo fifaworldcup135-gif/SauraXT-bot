@@ -1,6 +1,7 @@
-﻿import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { musicManager } from '../../utils/musicManager.js';
 import { errorEmbed } from '../../utils/embeds.js';
+import { config } from '../../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('247')
@@ -20,6 +21,7 @@ export async function execute(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(isEnabled ? '#00FF00' : '#FFA500')
+    .setAuthor({ name: '24/7 Voice Engine', iconURL: config.assets.logoGif })
     .setTitle(`📻 24/7 Mode: ${isEnabled ? 'ENABLED' : 'DISABLED'}`)
     .setDescription(
       isEnabled
@@ -28,7 +30,7 @@ export async function execute(interaction) {
     )
     .setFooter({
       text: `${botName} • 24/7 Voice Engine`,
-      iconURL: interaction.client.user?.displayAvatarURL() || undefined
+      iconURL: interaction.client.user?.displayAvatarURL() || config.assets.logoGif
     })
     .setTimestamp();
 

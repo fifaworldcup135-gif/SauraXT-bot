@@ -4,7 +4,7 @@ import { config } from '../config.js';
 export function baseEmbed() {
   return new EmbedBuilder()
     .setColor(config.colors.primary)
-    .setFooter({ text: `${config.botName} ? SAURAXT KA server`, iconURL: 'https://cdn.discordapp.com/emojis/1062342294398836737.png' })
+    .setFooter({ text: `${config.botName} • SAURAXT KA server`, iconURL: config.assets.logoGif })
     .setTimestamp();
 }
 
@@ -13,7 +13,7 @@ export function successEmbed(title, description) {
     .setColor(config.colors.success)
     .setTitle(`${config.emojis.success} ${title}`)
     .setDescription(description || '')
-    .setFooter({ text: `${config.botName} ? Success` })
+    .setFooter({ text: `${config.botName} • Success`, iconURL: config.assets.logoGif })
     .setTimestamp();
 }
 
@@ -22,7 +22,7 @@ export function errorEmbed(title, description) {
     .setColor(config.colors.error)
     .setTitle(`${config.emojis.error} ${title}`)
     .setDescription(description || 'An unexpected error occurred.')
-    .setFooter({ text: `${config.botName} ? Error` })
+    .setFooter({ text: `${config.botName} • Error`, iconURL: config.assets.logoGif })
     .setTimestamp();
 }
 
@@ -31,7 +31,7 @@ export function infoEmbed(title, description) {
     .setColor(config.colors.info)
     .setTitle(title)
     .setDescription(description || '')
-    .setFooter({ text: `${config.botName} ? SAURAXT KA server` })
+    .setFooter({ text: `${config.botName} • SAURAXT KA server`, iconURL: config.assets.logoGif })
     .setTimestamp();
 }
 

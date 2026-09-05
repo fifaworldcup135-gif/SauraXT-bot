@@ -167,13 +167,14 @@ class MusicManager {
       fetchTrackMetadata(track.title, artistName).catch(() => null)
     ]);
 
-    const footerIcon = metadata?.artistPfp || (queue?.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png");
+    const footerIcon = metadata?.artistPfp || (queue?.client?.user?.displayAvatarURL() || config.assets.logoGif);
     let footerText = `${artistName}`;
     if (metadata?.releaseDate) {
       footerText += `  •  ${metadata.releaseDate}`;
     }
 
     const embed = new EmbedBuilder()
+      .setAuthor({ name: "Now Playing", iconURL: config.assets.logoGif })
       .setTitle("Now Playing")
       .setDescription(`${platformEmoji} [${track.title}](${track.url})`)
       .addFields(
@@ -209,6 +210,8 @@ class MusicManager {
 
     if (track.thumbnail) {
       embed.setThumbnail(track.thumbnail);
+    } else {
+      embed.setThumbnail(config.assets.vinyl);
     }
 
     return embed;
@@ -293,7 +296,7 @@ class MusicManager {
         searchQuery: firstItem.searchQuery || firstItem.title,
         duration: firstItem.duration || "HQ",
         durationSec: firstItem.durationSec || 180,
-        thumbnail: firstItem.thumbnail || queryResult.tracks[0]?.thumbnail || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png",
+        thumbnail: firstItem.thumbnail || queryResult.tracks[0]?.thumbnail || config.assets.vinyl,
         artist: firstItem.artist || "Artist",
         requestedBy: member.id,
         isVip: isVip,
@@ -362,7 +365,7 @@ class MusicManager {
       streamUrl: streamUrl,
       duration: durFormatted,
       durationSec: streamDurSec,
-      thumbnail: queryResult.thumbnail || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png",
+      thumbnail: queryResult.thumbnail || config.assets.vinyl,
       artist: queryResult.artist || "Artist",
       requestedBy: member.id,
       isVip: isVip,
@@ -573,15 +576,17 @@ class MusicManager {
       const botName = queue.client?.user?.username || "SauraXT";
       const summaryEmbed = new EmbedBuilder()
         .setColor("#6A5ACD")
+        .setAuthor({ name: "SauraXT Audio Engine", iconURL: config.assets.logoGif })
         .setTitle("💿 Session Summary")
         .setDescription("Your listening session has ended. SauraXT is ready for unlimited music anytime! 🎵")
+        .setThumbnail(config.assets.sessionSummary)
         .addFields(
           { name: "Songs Played", value: `\`${tracksPlayed}\``, inline: true },
           { name: "Total Time", value: `\`${formattedDuration}\``, inline: true }
         )
         .setFooter({ 
           text: `${botName} • 100% Free & Unlimited Audio`, 
-          iconURL: queue.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png" 
+          iconURL: queue.client?.user?.displayAvatarURL() || config.assets.logoGif 
         })
         .setTimestamp();
 

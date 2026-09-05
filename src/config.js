@@ -34,5 +34,19 @@ export const config = {
     { id: 'shield', name: 'Rob Protection Shield', price: 5000, description: 'Protects you from being robbed for 24 hours', type: 'consumable' },
     { id: 'fishing_rod', name: 'Pro Fishing Rod', price: 2500, description: 'Increases work and beg payout multiplier', type: 'tool' },
     { id: 'lucky_dice', name: 'Lucky Casino Dice', price: 7500, description: 'Increases luck on coinflip and slots', type: 'booster' }
-  ]
+  ],
+  assets: {
+    logoGif: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/logo.gif',
+    banner: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/banner.png',
+    vinyl: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/vinyl.webp',
+    cd: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/cd.webp',
+    headphones: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/headphones.webp',
+    sessionSummary: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/session_summary.png',
+    nowPlaying: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/now_playing.png',
+    activity: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/activity.png',
+    spotify: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/spotify.webp',
+    soundcloud: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/soundcloud.webp',
+    youtube: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/youtube.png',
+    appleMusic: 'https://raw.githubusercontent.com/fifaworldcup135-gif/SauraXT-bot/main/assets/emojis/apple_music.webp'
+  }
 };
