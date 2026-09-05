@@ -62,6 +62,7 @@ class MusicManager {
         autoplay: false,
         volume: 100,
         activeFilter: "filter_clear",
+        twentyFourSeven: false,
         startedAt: 0,
         idleTimer: null,
         sessionStats: {
@@ -544,13 +545,15 @@ class MusicManager {
       queue.sessionStats = { startTime: Date.now(), tracksPlayed: 0 };
     }
 
-    // Disconnect after 5m of idle time
+    // Disconnect after 5m of idle time (unless 24/7 mode is active)
     if (queue.idleTimer) clearTimeout(queue.idleTimer);
-    queue.idleTimer = setTimeout(() => {
-      if (!queue.isPlaying && queue.queue.length === 0) {
-        this.stop(guildId);
-      }
-    }, 5 * 60 * 1000);
+    if (!queue.twentyFourSeven) {
+      queue.idleTimer = setTimeout(() => {
+        if (!queue.isPlaying && queue.queue.length === 0 && !queue.twentyFourSeven) {
+          this.stop(guildId);
+        }
+      }, 5 * 60 * 1000);
+    }
   }
 
   playPrevious(guildId) {
@@ -640,6 +643,30 @@ class MusicManager {
     }
     const [removed] = queue.queue.splice(index, 1);
     return removed;
+  }
+
+  toggle247(guildId) {
+    const queue = this.getQueue(guildId);
+    queue.twentyFourSeven = !queue.twentyFourSeven;
+    if (queue.twentyFourSeven && queue.idleTimer) {
+      clearTimeout(queue.idleTimer);
+      queue.idleTimer = null;
+    }
+    return queue.twentyFourSeven;
+  }
+
+  replay(guildId) {
+    const queue = this.getQueue(guildId);
+    if (!queue.currentTrack) return false;
+    this.playTrack(guildId, queue.currentTrack);
+    return true;
+  }
+
+  skipTo(guildId, position) {
+    const queue = this.getQueue(guildId);
+    if (position < 1 || position > queue.queue.length) return false;
+    queue.queue.splice(0, position - 1);
+    return this.skip(guildId);
   }
 
   stop(guildId) {
