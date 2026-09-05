@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   joinVoiceChannel, 
   createAudioPlayer, 
   createAudioResource, 
@@ -300,7 +300,7 @@ class MusicManager {
     let streamDurSec = queryResult.durationSec || 180;
     const searchTarget = queryResult.searchQuery || queryResult.title;
 
-    if (queryResult.source === "spotify" || queryResult.source === "search" || queryResult.source === "web" || !streamUrl) {
+    if (queryResult.source === "spotify" || queryResult.source === "youtube" || queryResult.source === "search" || queryResult.source === "web" || !streamUrl || streamUrl.includes("youtube.com") || streamUrl.includes("youtu.be")) {
       // Search SoundCloud Lossless first (preferring full-length tracks >= 60s)
       const scResults = await play.search(searchTarget, {
         source: { soundcloud: "tracks" },

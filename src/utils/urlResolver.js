@@ -73,16 +73,27 @@ export async function resolveMusicQuery(query) {
     try {
       const pl = await play.playlist_info(trimmed, { incomplete: true }).catch(() => null);
       if (pl && pl.videos && pl.videos.length > 0) {
-        const tracks = pl.videos.map(v => ({
-          title: v.title,
-          artist: v.channel?.name || 'YouTube Creator',
-          searchQuery: v.url,
-          duration: v.durationRaw || 'HQ',
-          durationSec: v.durationInSec || 180,
-          thumbnail: v.thumbnails?.[0]?.url,
-          url: v.url,
-          source: 'youtube'
-        }));
+        const tracks = pl.videos.map(v => {
+          const rawTitle = v.title || 'YouTube Track';
+          const cleanTitle = rawTitle
+            .replace(/\(Official (Music )?Video\)/gi, '')
+            .replace(/\(Official (Audio|Lyric Video)\)/gi, '')
+            .replace(/\[(Official )?(Music )?Video\]/gi, '')
+            .replace(/\(dir\..*?\)/gi, '')
+            .replace(/\[.*?HD.*?\]/gi, '')
+            .trim();
+          return {
+            title: rawTitle,
+            cleanTitle: cleanTitle,
+            artist: v.channel?.name || 'YouTube Creator',
+            searchQuery: `${cleanTitle} ${v.channel?.name || ''}`.trim(),
+            duration: v.durationRaw || 'HQ',
+            durationSec: v.durationInSec || 180,
+            thumbnail: v.thumbnails?.[0]?.url,
+            url: v.url,
+            source: 'youtube'
+          };
+        });
         return {
           type: 'playlist',
           name: pl.title || 'YouTube Playlist',
@@ -95,17 +106,63 @@ export async function resolveMusicQuery(query) {
     }
   }
 
-  // 4. YOUTUBE SINGLE VIDEO / SHORTS
+  // 4. YOUTUBE SINGLE VIDEO / SHORTS / YOU.BE
   if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
+    const ytMatch = trimmed.match(/(?:youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|shorts\/|&v=)([^#&?]*)/);
+    const videoId = (ytMatch && ytMatch[1].length === 11) ? ytMatch[1] : null;
+
+    if (videoId) {
+      const canonicalYtUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      try {
+        const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalYtUrl)}&format=json`);
+        if (oembedRes.ok) {
+          const oembed = await oembedRes.json();
+          const rawTitle = oembed.title || 'YouTube Track';
+          const author = oembed.author_name || 'YouTube Creator';
+          const cleanTitle = rawTitle
+            .replace(/\(Official (Music )?Video\)/gi, '')
+            .replace(/\(Official (Audio|Lyric Video)\)/gi, '')
+            .replace(/\[(Official )?(Music )?Video\]/gi, '')
+            .replace(/\(dir\..*?\)/gi, '')
+            .replace(/\[.*?HD.*?\]/gi, '')
+            .trim();
+
+          return {
+            type: 'track',
+            searchQuery: `${cleanTitle} ${author}`.trim(),
+            title: rawTitle,
+            cleanTitle: cleanTitle,
+            artist: author,
+            duration: 'HQ',
+            durationSec: 180,
+            thumbnail: oembed.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            url: canonicalYtUrl,
+            source: 'youtube'
+          };
+        }
+      } catch (e) {
+        console.warn('YouTube oEmbed error, falling back:', e.message);
+      }
+    }
+
     try {
       const ytInfo = await play.video_basic_info(trimmed).catch(() => null);
       if (ytInfo && ytInfo.video_details) {
         const vd = ytInfo.video_details;
         const durSec = vd.durationInSec || 180;
+        const cleanTitle = (vd.title || '')
+          .replace(/\(Official (Music )?Video\)/gi, '')
+          .replace(/\(Official (Audio|Lyric Video)\)/gi, '')
+          .replace(/\[(Official )?(Music )?Video\]/gi, '')
+          .replace(/\(dir\..*?\)/gi, '')
+          .replace(/\[.*?HD.*?\]/gi, '')
+          .trim();
+
         return {
           type: 'track',
-          searchQuery: vd.url,
+          searchQuery: `${cleanTitle} ${vd.channel?.name || ''}`.trim(),
           title: vd.title,
+          cleanTitle: cleanTitle,
           artist: vd.channel?.name || 'YouTube Creator',
           duration: vd.durationRaw || `${Math.floor(durSec / 60)}:${(durSec % 60).toString().padStart(2, '0')}`,
           durationSec: durSec,
