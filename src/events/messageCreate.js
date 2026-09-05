@@ -107,10 +107,13 @@ export async function execute(message, client) {
     });
   }
 
-  // --- PREFIX MUSIC COMMANDS FOR ALL MEMBERS IN ALL CHANNELS (!play, !p, !skip, etc.) ---
-  const prefix = '!';
-  if (message.content.startsWith(prefix)) {
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
+  // --- PREFIX MUSIC COMMANDS (!play, l.play, !p, !skip, l.skip, etc.) ---
+  let usedPrefix = null;
+  if (message.content.startsWith('!')) usedPrefix = '!';
+  else if (message.content.startsWith('l.')) usedPrefix = 'l.';
+
+  if (usedPrefix) {
+    const args = message.content.slice(usedPrefix.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
     if (cmd === 'play' || cmd === 'p') {
@@ -120,7 +123,7 @@ export async function execute(message, client) {
       }
       const query = args.join(' ');
       if (!query) {
-        return message.reply('❌ Please provide a song name or link! Example: `!play Michael Jackson` or `!p Kesariya`').catch(() => {});
+        return message.reply('❌ Please provide a song name or link! Example: `!play Sudno` or `l.play https://...`').catch(() => {});
       }
 
       const statusMsg = await message.reply('🔍 Searching and loading track...').catch(() => {});
@@ -129,33 +132,20 @@ export async function execute(message, client) {
         if (statusMsg) statusMsg.delete().catch(() => {});
 
         if (res.status === 'queued') {
-          message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(res.isVip ? '#FFD700' : config.colors.primary)
-                .setTitle(res.isVip ? '👑 VIP Added to Queue (Position #' + res.position + ')' : '➕ Added to Queue (Position #' + res.position + ')')
-                .setDescription('**[' + res.track.title + '](' + res.track.url + ')**')
-                .setThumbnail(res.track.thumbnail)
-                .addFields(
-                  { name: '👤 Artist', value: res.track.artist, inline: true },
-                  { name: '⏱️ Duration', value: res.track.duration, inline: true }
-                )
-            ]
-          }).catch(() => {});
+          const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('✅ Added to Queue')
+            .setDescription(`**[${res.track.title}](${res.track.url})**`)
+            .addFields(
+              { name: 'Duration', value: `\`${res.track.duration || 'HQ'}\``, inline: true },
+              { name: 'Requested By', value: `<@${message.author.id}>`, inline: true }
+            )
+            .setFooter({ text: 'Lunar' });
+          if (res.track.thumbnail) embed.setThumbnail(res.track.thumbnail);
+          message.channel.send({ embeds: [embed] }).catch(() => {});
         } else {
-          message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(res.isVip ? '#FFD700' : config.colors.success)
-                .setTitle(res.isVip ? '👑 VIP Lounge • Now Playing' : '🎵 Playing Track')
-                .setDescription('**[' + res.track.title + '](' + res.track.url + ')** in **' + voiceChannel.name + '**')
-                .setThumbnail(res.track.thumbnail)
-                .addFields(
-                  { name: '👤 Artist', value: res.track.artist, inline: true },
-                  { name: '⏱️ Duration', value: res.track.duration, inline: true }
-                )
-            ]
-          }).catch(() => {});
+          const embed = await musicManager.createNowPlayingEmbed(res.track, res.queue);
+          message.channel.send({ embeds: [embed] }).catch(() => {});
         }
       } catch (err) {
         if (statusMsg) statusMsg.delete().catch(() => {});
@@ -184,33 +174,48 @@ export async function execute(message, client) {
       return message.reply(skipped ? '⏭️ Track skipped!' : '❌ No track is currently playing.').catch(() => {});
     }
 
-    if (cmd === 'pause') {
+    if (cmd === 'back' || cmd === 'b') {
+      const voiceChannel = message.member?.voice.channel;
+      if (!voiceChannel) return message.reply('❌ Join a voice channel first!').catch(() => {});
+      const prev = musicManager.playPrevious(guildId);
+      return message.reply(prev ? `⏮️ Playing previous track: **${prev.title}**!` : '❌ No previous tracks in history.').catch(() => {});
+    }
+
+    if (cmd === 'pause' || cmd === 'ps') {
       const paused = musicManager.pause(guildId);
       return message.reply(paused ? '⏸️ Playback paused.' : '❌ Nothing is currently playing.').catch(() => {});
     }
 
-    if (cmd === 'resume') {
+    if (cmd === 'resume' || cmd === 'rs' || cmd === 'unpause') {
       const resumed = musicManager.resume(guildId);
       return message.reply(resumed ? '▶️ Playback resumed.' : '❌ Music is not paused.').catch(() => {});
     }
 
-    if (cmd === 'stop' || cmd === 'leave' || cmd === 'dc') {
+    if (cmd === 'stop' || cmd === 'st' || cmd === 'leave' || cmd === 'dc') {
       musicManager.stop(guildId);
-      return message.reply('⏹️ Stopped playback and cleared queue.').catch(() => {});
+      return message.reply('💿 Playback stopped and queue cleared.').catch(() => {});
+    }
+
+    if (cmd === 'clear' || cmd === 'skipall' || cmd === 'cq') {
+      const count = musicManager.clearQueue(guildId);
+      return message.reply(`🧹 Cleared **${count}** tracks from queue.`).catch(() => {});
     }
 
     if (cmd === 'queue' || cmd === 'q') {
       const q = musicManager.getQueue(guildId);
       if (!q.currentTrack && q.queue.length === 0) {
-        return message.reply('📜 The queue is empty.').catch(() => {});
+        return message.reply('🎧 The queue is currently empty.').catch(() => {});
       }
+      const allTracks = [q.currentTrack, ...q.queue].filter(Boolean);
+      const desc = allTracks.slice(0, 10).map((t, i) => {
+        const title = t.title.length > 45 ? t.title.slice(0, 45) + '...' : t.title;
+        return `**${i + 1}.** [${title}](${t.url}) - \`${t.duration || 'HQ'}\``;
+      }).join('\n');
       const embed = new EmbedBuilder()
-        .setColor(config.colors.primary)
-        .setTitle('🎶 Server Music Queue')
-        .setDescription(
-          '**Now Playing:** ' + (q.currentTrack ? q.currentTrack.title : 'None') + '\n\n' + 
-          (q.queue.length > 0 ? q.queue.slice(0, 10).map((t, i) => `${i + 1}. **${t.title}**`).join('\n') : 'No upcoming songs.')
-        );
+        .setColor('#6A5ACD')
+        .setTitle(`🎧 Queue for ${q.voiceChannel?.name || 'Voice Channel'}`)
+        .setDescription(desc || 'No songs in queue')
+        .setFooter({ text: `Lunar  •  ${allTracks.length} tracks` });
       return message.reply({ embeds: [embed] }).catch(() => {});
     }
 
@@ -224,10 +229,25 @@ export async function execute(message, client) {
       return message.reply('🔊 Volume set to **' + vol + '%**').catch(() => {});
     }
 
-    if (cmd === 'loop') {
+    if (cmd === 'loop' || cmd === 'r' || cmd === 'repeat') {
       const q = musicManager.getQueue(guildId);
-      q.isLooping = !q.isLooping;
-      return message.reply('🔁 Loop mode is now **' + (q.isLooping ? 'ENABLED' : 'DISABLED') + '**').catch(() => {});
+      const mode = args[0]?.toLowerCase();
+      if (mode === 'track' || mode === 'song') {
+        q.isLooping = true;
+        q.loopQueue = false;
+        return message.reply('⭐ Set loop mode to **Track**').catch(() => {});
+      } else if (mode === 'queue') {
+        q.isLooping = false;
+        q.loopQueue = true;
+        return message.reply('⭐ Set loop mode to **Queue**').catch(() => {});
+      } else if (mode === 'off' || mode === 'stop') {
+        q.isLooping = false;
+        q.loopQueue = false;
+        return message.reply('⭐ Set loop mode to **Off**').catch(() => {});
+      } else {
+        q.isLooping = !q.isLooping;
+        return message.reply(`⭐ Set loop mode to **${q.isLooping ? 'Track' : 'Off'}**`).catch(() => {});
+      }
     }
   }
 

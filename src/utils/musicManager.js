@@ -612,6 +612,32 @@ class MusicManager {
     return queue.autoplay;
   }
 
+  clearQueue(guildId) {
+    const queue = this.getQueue(guildId);
+    const count = queue.queue.length;
+    queue.queue = [];
+    return count;
+  }
+
+  moveTrack(guildId, fromIndex, toIndex) {
+    const queue = this.getQueue(guildId);
+    if (fromIndex < 0 || fromIndex >= queue.queue.length || toIndex < 0 || toIndex >= queue.queue.length) {
+      return false;
+    }
+    const [track] = queue.queue.splice(fromIndex, 1);
+    queue.queue.splice(toIndex, 0, track);
+    return true;
+  }
+
+  removeTrack(guildId, index) {
+    const queue = this.getQueue(guildId);
+    if (index < 0 || index >= queue.queue.length) {
+      return null;
+    }
+    const [removed] = queue.queue.splice(index, 1);
+    return removed;
+  }
+
   stop(guildId) {
     const queue = this.getQueue(guildId);
     this.finishPlayback(guildId);
