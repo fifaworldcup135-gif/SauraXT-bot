@@ -56,12 +56,13 @@ export async function execute(interaction) {
     return `**${globalIdx + 1}.** [${truncatedName}](${url})${trackLoop} - ${timeInfo}`;
   }).join('\n');
 
+  const botName = interaction.client.user?.username || 'SauraXT';
   const embed = new EmbedBuilder()
     .setTitle(`🎧 Queue for ${voiceChannelName}`)
     .setDescription(pageDescription || 'No songs in queue')
     .setColor('#6A5ACD')
     .setFooter({ 
-      text: `Lunar  •  Page ${page}/${totalPages}  •  Queue ${totalDurationStr}`,
+      text: `${botName}  •  Page ${page}/${totalPages}  •  Queue ${totalDurationStr}`,
       iconURL: interaction.client.user?.displayAvatarURL() || undefined
     });
 

@@ -16,7 +16,7 @@ export async function execute(interaction) {
         ? 'SauraXT will automatically search and play similar high-quality tracks whenever the current queue ends.'
         : 'Playback will naturally conclude and stop when the current queue finishes.'
     )
-    .setFooter({ text: 'Groove & Lunar Autoplay Engine' })
+    .setFooter({ text: 'SauraXT Autoplay Engine', iconURL: interaction.client.user?.displayAvatarURL() || undefined })
     .setTimestamp();
 
   return interaction.reply({ embeds: [embed] });

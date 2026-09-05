@@ -1,18 +1,18 @@
-﻿import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 const REPOSITORY_URL = 'https://github.com/relentiousdragon/lunar-music';
 
 export const data = new SlashCommandBuilder()
   .setName('credits')
-  .setDescription('Show Lunar Music credits and original repository');
+  .setDescription('Show music engine open-source credits and repository');
 
 export async function execute(interaction) {
   const embed = new EmbedBuilder()
-    .setTitle('Lunar Music Credits')
-    .setDescription('Created by [relentiousdragon](https://github.com/relentiousdragon).\n\nIf you liked this bot, consider starring the repository on GitHub.')
+    .setTitle('SauraXT Music Credits')
+    .setDescription('Built on open-source audio foundations by [relentiousdragon](https://github.com/relentiousdragon) & the SauraXT Development Team.\n\nEnjoying high quality music on SauraXT? Consider starring the project!')
     .setColor('#6A5ACD')
     .setFooter({
-      text: 'Lunar',
+      text: interaction.client.user?.username || 'SauraXT',
       iconURL: interaction.client.user?.displayAvatarURL() || undefined
     });
 

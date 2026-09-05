@@ -1,4 +1,4 @@
-﻿import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { db } from '../../database/db.js';
 import { errorEmbed } from '../../utils/embeds.js';
 
@@ -31,7 +31,7 @@ export async function execute(interaction) {
     .setDescription(description)
     .setColor('#6A5ACD')
     .setFooter({
-      text: 'Lunar',
+      text: interaction.client.user?.username || 'SauraXT',
       iconURL: interaction.client.user?.displayAvatarURL() || undefined
     });
 

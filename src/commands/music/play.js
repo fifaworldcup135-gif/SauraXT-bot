@@ -30,12 +30,15 @@ export async function execute(interaction) {
       return interaction.editReply({ embeds: [embed] });
     }
 
+    const botName = interaction.client.user?.username || 'SauraXT';
+    const botAvatar = interaction.client.user?.displayAvatarURL() || undefined;
+
     if (result.status === 'playing_playlist' || result.status === 'playlist') {
       const embed = new EmbedBuilder()
         .setColor('#00FF00')
         .setTitle('✅ Added Playlist to Queue')
         .setDescription(`Added **${result.count}** tracks from **${result.name}**\n\n🎵 **Now Playing:** [${result.track.title}](${result.track.url})`)
-        .setFooter({ text: 'Lunar' })
+        .setFooter({ text: botName, iconURL: botAvatar })
         .setTimestamp();
       if (result.track.thumbnail) embed.setThumbnail(result.track.thumbnail);
       return interaction.editReply({ embeds: [embed] });
@@ -50,7 +53,7 @@ export async function execute(interaction) {
           { name: 'Duration', value: `\`${result.track.duration || 'HQ'}\``, inline: true },
           { name: 'Requested By', value: `<@${interaction.user.id}>`, inline: true }
         )
-        .setFooter({ text: 'Lunar' });
+        .setFooter({ text: botName, iconURL: botAvatar });
       if (result.track.thumbnail) embed.setThumbnail(result.track.thumbnail);
       return interaction.editReply({ embeds: [embed] });
     }

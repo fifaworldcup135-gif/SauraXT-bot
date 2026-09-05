@@ -7,7 +7,7 @@ import play from 'play-dl';
 
 export const data = new SlashCommandBuilder()
   .setName('favorite')
-  .setDescription('Manage your personal favorite music tracks (Groove + Lunar feature)')
+  .setDescription('Manage your personal favorite music tracks on SauraXT')
   .addSubcommand(sub =>
     sub.setName('add')
       .setDescription('Add a song to your favorites (defaults to currently playing song)')

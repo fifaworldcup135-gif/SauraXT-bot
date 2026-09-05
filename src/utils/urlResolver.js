@@ -44,6 +44,21 @@ export async function resolveMusicQuery(query) {
           const data = JSON.parse(jsonStr);
           const entity = data.props?.pageProps?.state?.data?.entity;
           if (entity && Array.isArray(entity.trackList) && entity.trackList.length > 0) {
+            if (entity.trackList.length === 1) {
+              const t = entity.trackList[0];
+              return {
+                type: 'track',
+                title: t.title,
+                artist: t.subtitle || entity.name || 'Artist',
+                searchQuery: `${t.title} ${t.subtitle || ''}`.trim(),
+                duration: t.duration ? `${Math.floor(t.duration / 60000)}:${Math.floor((t.duration % 60000) / 1000).toString().padStart(2, '0')}` : 'HQ',
+                durationSec: Math.floor((t.duration || 180000) / 1000),
+                thumbnail: entity.coverArt?.sources?.[0]?.url || 'https://open.spotifycdn.com/cdn/images/favicon.0f31d2ea.ico',
+                url: `https://open.spotify.com/track/${t.id || ''}`,
+                source: 'spotify'
+              };
+            }
+
             const tracks = entity.trackList.map(t => ({
               title: t.title,
               artist: t.subtitle || entity.name || 'Artist',

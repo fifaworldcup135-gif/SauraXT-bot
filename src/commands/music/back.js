@@ -4,7 +4,7 @@ import { successEmbed, errorEmbed } from '../../utils/embeds.js';
 
 export const data = new SlashCommandBuilder()
   .setName('back')
-  .setDescription('Play the previous track from history (Lunar feature)');
+  .setDescription('Play the previous track from playback history');
 
 export async function execute(interaction) {
   const queue = musicManager.getQueue(interaction.guildId);

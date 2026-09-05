@@ -1,4 +1,4 @@
-﻿import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { musicManager } from '../../utils/musicManager.js';
 import { errorEmbed } from '../../utils/embeds.js';
 
@@ -27,11 +27,15 @@ export async function execute(interaction) {
   const isEnabled = queue.activeFilter !== 'nightcore';
   queue.activeFilter = isEnabled ? 'nightcore' : 'none';
 
+  const botName = interaction.client.user?.username || 'SauraXT';
   const embed = new EmbedBuilder()
     .setTitle(`▶️ Nightcore ${isEnabled ? 'Enabled' : 'Disabled'}`)
     .setDescription(`Nightcore filter has been **${isEnabled ? 'enabled' : 'disabled'}**.`)
     .setColor(isEnabled ? '#00FF00' : '#FF0000')
-    .setFooter({ text: 'Lunar' });
+    .setFooter({ 
+      text: botName, 
+      iconURL: interaction.client.user?.displayAvatarURL() || undefined 
+    });
 
   return interaction.reply({ embeds: [embed] });
 }

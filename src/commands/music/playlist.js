@@ -6,7 +6,7 @@ import { config } from '../../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('playlist')
-  .setDescription('Create and manage custom music playlists (Groove + Lunar feature)')
+  .setDescription('Create and manage custom music playlists on SauraXT')
   .addSubcommand(sub =>
     sub.setName('save')
       .setDescription('Save the current playing queue as a custom playlist')

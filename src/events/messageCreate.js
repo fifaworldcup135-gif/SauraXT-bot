@@ -140,7 +140,10 @@ export async function execute(message, client) {
               { name: 'Duration', value: `\`${res.track.duration || 'HQ'}\``, inline: true },
               { name: 'Requested By', value: `<@${message.author.id}>`, inline: true }
             )
-            .setFooter({ text: 'Lunar' });
+            .setFooter({ 
+              text: client.user?.username || 'SauraXT', 
+              iconURL: client.user?.displayAvatarURL() || undefined 
+            });
           if (res.track.thumbnail) embed.setThumbnail(res.track.thumbnail);
           message.channel.send({ embeds: [embed] }).catch(() => {});
         } else {
@@ -215,7 +218,10 @@ export async function execute(message, client) {
         .setColor('#6A5ACD')
         .setTitle(`🎧 Queue for ${q.voiceChannel?.name || 'Voice Channel'}`)
         .setDescription(desc || 'No songs in queue')
-        .setFooter({ text: `Lunar  •  ${allTracks.length} tracks` });
+        .setFooter({ 
+          text: `${client.user?.username || 'SauraXT'}  •  ${allTracks.length} tracks`,
+          iconURL: client.user?.displayAvatarURL() || undefined
+        });
       return message.reply({ embeds: [embed] }).catch(() => {});
     }
 

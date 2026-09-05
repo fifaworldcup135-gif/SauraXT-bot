@@ -15,19 +15,32 @@ import { fetchTrackMetadata, getPlatformEmoji, getPlatformColor } from "./lunarM
 class MusicManager {
   constructor() {
     this.queues = new Map(); // guildId => QueueObject
+    this.defaultClientId = 'Pb72ranhoyt6gw7hM7TkzUItXlMWSNSo';
+    play.setToken({ soundcloud: { client_id: this.defaultClientId } }).catch(() => {});
     this.initSoundCloud();
   }
 
   async initSoundCloud() {
     try {
-      const clientId = await play.getFreeClientID();
+      const clientId = await play.getFreeClientID().catch(() => null);
       if (clientId) {
+        this.defaultClientId = clientId;
         await play.setToken({ soundcloud: { client_id: clientId } });
-        console.log("🎵 Lunar Audio Engine: Lossless streaming provider ready.");
+        console.log("🎵 SauraXT Audio Engine: Lossless streaming provider ready.");
+      } else {
+        await play.setToken({ soundcloud: { client_id: this.defaultClientId } });
+        console.log("🎵 SauraXT Audio Engine: Default lossless streaming provider ready.");
       }
     } catch (err) {
-      console.error("Lunar Audio Engine init error:", err.message);
+      await play.setToken({ soundcloud: { client_id: this.defaultClientId } }).catch(() => {});
+      console.log("🎵 SauraXT Audio Engine: Lossless fallback provider active.");
     }
+  }
+
+  async ensureSoundCloud() {
+    try {
+      await play.setToken({ soundcloud: { client_id: this.defaultClientId } });
+    } catch (e) {}
   }
 
   getQueue(guildId) {
@@ -301,28 +314,21 @@ class MusicManager {
     const searchTarget = queryResult.searchQuery || queryResult.title;
 
     if (queryResult.source === "spotify" || queryResult.source === "youtube" || queryResult.source === "search" || queryResult.source === "web" || !streamUrl || streamUrl.includes("youtube.com") || streamUrl.includes("youtu.be")) {
-      // Search SoundCloud Lossless first (preferring full-length tracks >= 60s)
-      const scResults = await play.search(searchTarget, {
-        source: { soundcloud: "tracks" },
-        limit: 10
-      }).catch(() => []);
+      await this.ensureSoundCloud();
+      const cleanTarget = searchTarget.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').trim();
 
-      const fullSc = scResults.find(s => s.durationInSec && s.durationInSec >= 60);
+      let scResults = await play.search(searchTarget, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
+      if (!scResults || scResults.length === 0) {
+        scResults = await play.search(cleanTarget + (queryResult.artist ? ' ' + queryResult.artist : ''), { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
+      }
 
-      if (fullSc) {
-        streamUrl = fullSc.url;
-        streamDurSec = fullSc.durationInSec;
-      } else {
-        // Fallback to YouTube for guaranteed full-length official release
-        const ytResults = await play.search(searchTarget, { limit: 5 }).catch(() => []);
-        const fullYt = ytResults.find(y => y.durationInSec && y.durationInSec >= 60) || ytResults[0];
-        if (fullYt) {
-          streamUrl = fullYt.url;
-          streamDurSec = fullYt.durationInSec || streamDurSec;
-        } else if (scResults.length > 0) {
-          streamUrl = scResults[0].url;
-          streamDurSec = scResults[0].durationInSec || streamDurSec;
-        }
+      const targetSc = scResults.find(s => s.durationInSec && s.durationInSec >= 90)
+                    || scResults.find(s => s.durationInSec && s.durationInSec >= 60)
+                    || scResults[0];
+
+      if (targetSc) {
+        streamUrl = targetSc.url;
+        streamDurSec = targetSc.durationInSec || streamDurSec;
       }
     }
 
@@ -372,13 +378,13 @@ class MusicManager {
       queue.idleTimer = null;
     }
 
-    // Set Lunar Voice Channel Status (Screenshot 4)
+    // Set SauraXT Voice Channel Status
     if (queue.voiceChannel && queue.voiceChannel.setStatus) {
       const truncatedTitle = track.title.length > 30 ? track.title.slice(0, 30) + "..." : track.title;
       queue.voiceChannel.setStatus(`💿 Now Playing: ${truncatedTitle}`).catch(() => {});
     }
 
-    // Set Lunar Discord Activity / Rich Presence (Screenshot 3)
+    // Set SauraXT Discord Activity / Rich Presence
     if (queue.client?.user?.setPresence) {
       queue.client.user.setPresence({
         activities: [{ name: `${track.artist} - ${track.title}`, type: ActivityType.Listening }],
@@ -389,42 +395,38 @@ class MusicManager {
     try {
       let stream;
       const target = track.streamUrl || track.url;
-      const isDirectStreamable = target && (target.includes("youtube.com") || target.includes("youtu.be") || target.includes("soundcloud.com"));
+      const isDirectSoundCloud = target && target.includes("soundcloud.com");
 
-      if (isDirectStreamable) {
+      if (isDirectSoundCloud) {
         try {
+          await this.ensureSoundCloud();
           stream = await play.stream(target);
         } catch (e) {
-          console.warn("Direct stream attempt failed:", e.message);
+          console.warn("Direct SoundCloud stream failed, falling back to search:", e.message);
         }
       }
 
       if (!stream) {
+        await this.ensureSoundCloud();
         const searchTarget = track.searchQuery || track.title || track.name;
-        // Search SoundCloud first for tracks >= 60s (eliminates preview snippets)
-        const scResults = await play.search(searchTarget, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
-        const fullSc = scResults.find(s => s.durationInSec && s.durationInSec >= 60);
+        const cleanTarget = searchTarget.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').trim();
 
-        if (fullSc) {
-          track.streamUrl = fullSc.url;
-          track.durationSec = fullSc.durationInSec;
+        let scResults = await play.search(searchTarget, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
+        if (!scResults || scResults.length === 0) {
+          scResults = await play.search(cleanTarget + (track.artist ? ' ' + track.artist : ''), { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
+        }
+
+        const targetSc = scResults.find(s => s.durationInSec && s.durationInSec >= 90)
+                      || scResults.find(s => s.durationInSec && s.durationInSec >= 60)
+                      || scResults[0];
+
+        if (targetSc) {
+          track.streamUrl = targetSc.url;
+          track.durationSec = targetSc.durationInSec || track.durationSec;
           track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, "0")}`;
-          stream = await play.stream(fullSc.url);
+          stream = await play.stream(targetSc.url);
         } else {
-          // Fallback to YouTube for full-length official track
-          const ytResults = await play.search(searchTarget, { limit: 5 }).catch(() => []);
-          const fullYt = ytResults.find(y => y.durationInSec && y.durationInSec >= 60) || ytResults[0];
-          if (fullYt) {
-            track.streamUrl = fullYt.url;
-            track.durationSec = fullYt.durationInSec || track.durationSec;
-            track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, "0")}`;
-            stream = await play.stream(fullYt.url);
-          } else if (scResults.length > 0) {
-            track.streamUrl = scResults[0].url;
-            stream = await play.stream(scResults[0].url);
-          } else {
-            throw new Error("Could not find streamable track");
-          }
+          throw new Error("Could not find streamable track");
         }
       }
 
@@ -521,8 +523,9 @@ class MusicManager {
       });
     }
 
-    // Send Lunar Session Summary Embed (Screenshot 2)
+    // Send SauraXT Session Summary Embed (Screenshot 2)
     if (queue.textChannel && tracksPlayed > 0) {
+      const botName = queue.client?.user?.username || "SauraXT";
       const summaryEmbed = new EmbedBuilder()
         .setColor("#6A5ACD")
         .setTitle("💿 Session Summary")
@@ -532,12 +535,13 @@ class MusicManager {
           { name: "Total Time", value: `\`${formattedDuration}\``, inline: true }
         )
         .setFooter({ 
-          text: "Lunar", 
+          text: botName, 
           iconURL: queue.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png" 
         })
         .setTimestamp();
 
       queue.textChannel.send({ embeds: [summaryEmbed] }).catch(() => {});
+      queue.sessionStats = { startTime: Date.now(), tracksPlayed: 0 };
     }
 
     // Disconnect after 5m of idle time

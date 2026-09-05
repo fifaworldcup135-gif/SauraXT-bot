@@ -1,4 +1,4 @@
-﻿import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { musicManager } from '../../utils/musicManager.js';
 import { errorEmbed } from '../../utils/embeds.js';
 
@@ -47,13 +47,16 @@ export async function execute(interaction) {
 
   const displayName = effectNames[effect] || effect;
 
+  const botName = interaction.client.user?.username || 'SauraXT';
+  const botAvatar = interaction.client.user?.displayAvatarURL() || undefined;
+
   if (effect === 'clear') {
     queue.activeFilter = 'none';
     const embed = new EmbedBuilder()
       .setTitle('▶️ Audio Filters Cleared')
       .setDescription('All active sound effects have been disabled.')
       .setColor('#00FF00')
-      .setFooter({ text: 'Lunar' });
+      .setFooter({ text: botName, iconURL: botAvatar });
     return interaction.reply({ embeds: [embed] });
   }
 
@@ -64,7 +67,7 @@ export async function execute(interaction) {
     .setTitle(`▶️ ${displayName} ${isEnabled ? 'Enabled' : 'Disabled'}`)
     .setDescription(`${displayName} filter has been **${isEnabled ? 'enabled' : 'disabled'}**.`)
     .setColor(isEnabled ? '#00FF00' : '#FF0000')
-    .setFooter({ text: 'Lunar' });
+    .setFooter({ text: botName, iconURL: botAvatar });
 
   return interaction.reply({ embeds: [embed] });
 }

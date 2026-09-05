@@ -17,7 +17,7 @@ import { getLyrics } from '../utils/lyrics.js';
 export async function handleComponentInteraction(interaction, client) {
   const customId = interaction.customId;
 
-  // --- 0. MUSIC CONTROLLER BUTTONS & FILTERS (Groove + Lunar Suite) ---
+  // --- 0. MUSIC CONTROLLER BUTTONS & FILTERS (SauraXT Suite) ---
   if (customId === 'music_filter_select') {
     const queue = musicManager.getQueue(interaction.guildId);
     if (!queue.currentTrack) {
