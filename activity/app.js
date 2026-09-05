@@ -21,7 +21,7 @@ const artwork = url => url ? (previewMode || url.startsWith('/artwork/') ? url :
 const hexToRgb = hex => { const normalized = String(hex || '#8c6cff').replace('#', ''); const value = Number.parseInt(normalized.slice(0, 6), 16); return { r: value >> 16, g: value >> 8 & 255, b: value & 255 }; };
 const rgba = (rgb, alpha) => `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 //
-const STORAGE_PREFIX = 'lunar_activity_';
+const STORAGE_PREFIX = 'sauraxt_activity_';
 function loadState(key, fallback) { try { const v = localStorage.getItem(STORAGE_PREFIX + key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; } }
 function saveState(key, value) { try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch { } }
 //
@@ -578,7 +578,7 @@ async function connectActivity() {
     sdk.subscribe('ACTIVITY_PIP_MODE_UPDATE', applyLayoutMode).catch(() => { });
     setConnection('AUTHORIZING…');
     const { code } = await withTimeout(sdk.commands.authorize({ client_id: config.clientId, response_type: 'code', prompt: 'none', scope: ['identify', 'guilds', 'rpc.activities.write'] }), 10000, 'Discord authorization timed out.');
-    if (!sdk.guildId || !sdk.channelId) throw new Error(`Launch ${config.botName || 'Lunar'} Activity from a guild voice channel.`);
+    if (!sdk.guildId || !sdk.channelId) throw new Error(`Launch ${config.botName || 'SauraXT'} Activity from a guild voice channel.`);
     connectSocket({ code, guildId: sdk.guildId, channelId: sdk.channelId });
   } catch (error) {
     const msg = error.message || '';
@@ -588,7 +588,7 @@ async function connectActivity() {
       const screen = $('voice-screen');
       if (screen) {
         if (/different/i.test(msg) || /bot['’]s voice channel/i.test(msg)) {
-          const bName = state.config?.botName || 'Lunar';
+          const bName = state.config?.botName || 'SauraXT';
           $('voice-screen-title').textContent = `${bName} is in Another Channel`;
           $('voice-screen-message').textContent = `${bName} is playing music in a different voice channel. Join that channel or use /stop to move it.`;
         } else {
@@ -1004,7 +1004,7 @@ function updateRPC() {
     currentJamMessage = JAM_MESSAGES[randomIndex];
   }
 
-  const botName = state.config?.botName || 'Lunar';
+  const botName = state.config?.botName || 'SauraXT';
   const botBranding = `${botName} Music`;
   const botAvatar = state.config?.botAvatar ? resolveFullImageUrl(state.config.botAvatar) : undefined;
   const largeArt = resolveFullImageUrl(current.artworkUrl) || botAvatar;
@@ -1171,7 +1171,7 @@ function startPreview() {
   state.snapshot = {
     player: {
       playing: true, paused: false, position: 97400, updatedAt: now,
-      current: { title: 'Midnight City', author: 'M83', duration: 244000, artworkUrl: 'https://i.scdn.co/image/ab67616d0000b2731ab3f157a98a8a1b2812e5f8', requester: { username: 'lunar listener' } },
+      current: { title: 'Midnight City', author: 'M83', duration: 244000, artworkUrl: 'https://i.scdn.co/image/ab67616d0000b2731ab3f157a98a8a1b2812e5f8', requester: { username: 'SauraXT listener' } },
       palette: { accent: '#6a4cff', secondary: '#4a9fff', tertiary: '#ff6b9d' },
       filters: { nightcore: true },
       hasPrevious: true, queueLength: 2

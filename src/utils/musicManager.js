@@ -1,3 +1,7 @@
+import fs from "fs";
+import path from "path";
+import ffmpegPath from "ffmpeg-static";
+import ytdl from "@distube/ytdl-core";
 import { 
   joinVoiceChannel, 
   createAudioPlayer, 
@@ -11,6 +15,19 @@ import { config } from "../config.js";
 import { resolveMusicQuery } from "./urlResolver.js";
 import { fetchLyrics } from "./lunarLyrics.js";
 import { fetchTrackMetadata, getPlatformEmoji, getPlatformColor } from "./lunarMetadata.js";
+
+if (ffmpegPath) {
+  try {
+    fs.chmodSync(ffmpegPath, 0o755);
+  } catch (e) {}
+  process.env.FFMPEG_PATH = ffmpegPath;
+  try {
+    const ffmpegDir = path.dirname(ffmpegPath);
+    if (process.env.PATH && !process.env.PATH.includes(ffmpegDir)) {
+      process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+    }
+  } catch (e) {}
+}
 
 class MusicManager {
   constructor() {
@@ -372,7 +389,6 @@ class MusicManager {
     queue.isPlaying = true;
     queue.isPaused = false;
     queue.startedAt = Date.now();
-    queue.sessionStats.tracksPlayed++;
 
     if (queue.idleTimer) {
       clearTimeout(queue.idleTimer);
@@ -404,17 +420,23 @@ class MusicManager {
           stream = await play.stream(target);
         } catch (e) {
           console.warn("Direct SoundCloud stream failed, falling back to search:", e.message);
+          stream = null;
         }
       }
 
       if (!stream) {
         await this.ensureSoundCloud();
         const searchTarget = track.searchQuery || track.title || track.name;
-        const cleanTarget = searchTarget.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').trim();
+        const cleanTarget = searchTarget
+          .replace(/\[.*?\]/g, '')
+          .replace(/\(.*?\)/g, '')
+          .replace(/ft\.?.*$/i, '')
+          .replace(/feat\.?.*$/i, '')
+          .trim();
 
         let scResults = await play.search(searchTarget, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
         if (!scResults || scResults.length === 0) {
-          scResults = await play.search(cleanTarget + (track.artist ? ' ' + track.artist : ''), { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
+          scResults = await play.search(`${cleanTarget} ${track.artist || ''}`.trim(), { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
         }
 
         const targetSc = scResults.find(s => s.durationInSec && s.durationInSec >= 90)
@@ -425,10 +447,31 @@ class MusicManager {
           track.streamUrl = targetSc.url;
           track.durationSec = targetSc.durationInSec || track.durationSec;
           track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, "0")}`;
-          stream = await play.stream(targetSc.url);
-        } else {
-          throw new Error("Could not find streamable track");
+          try {
+            stream = await play.stream(targetSc.url);
+          } catch (e) {
+            console.warn("SoundCloud target stream failed:", e.message);
+            stream = null;
+          }
         }
+      }
+
+      // Secondary fallback: @distube/ytdl-core if SoundCloud was not available
+      if (!stream && (track.url?.includes('youtube.com') || track.url?.includes('youtu.be'))) {
+        try {
+          const ytStream = ytdl(track.url, {
+            filter: 'audioonly',
+            quality: 'highestaudio',
+            highWaterMark: 1 << 25
+          });
+          stream = { stream: ytStream, type: 'arbitrary' };
+        } catch (e) {
+          console.warn("YouTube stream fallback failed:", e.message);
+        }
+      }
+
+      if (!stream) {
+        throw new Error("Could not find streamable track");
       }
 
       const resource = createAudioResource(stream.stream, {
@@ -441,13 +484,14 @@ class MusicManager {
       }
 
       queue.player.play(resource);
+      queue.sessionStats.tracksPlayed++;
 
       if (sendCard && queue.textChannel) {
         const embed = await this.createNowPlayingEmbed(track, queue);
         queue.textChannel.send({ embeds: [embed] }).catch(() => {});
       }
     } catch (err) {
-      console.error("Failed to stream audio:", err);
+      console.error("Failed to stream audio:", err.message, err.stack);
       if (queue.textChannel) {
         queue.textChannel.send("❌ Could not stream this track. Skipping...").catch(() => {});
       }
@@ -524,19 +568,19 @@ class MusicManager {
       });
     }
 
-    // Send SauraXT Session Summary Embed (Screenshot 2)
-    if (queue.textChannel && tracksPlayed > 0) {
+    // Send SauraXT Session Summary Embed only for genuine listening sessions (at least 30s & >= 1 track played)
+    if (queue.textChannel && tracksPlayed > 0 && totalSeconds >= 30) {
       const botName = queue.client?.user?.username || "SauraXT";
       const summaryEmbed = new EmbedBuilder()
         .setColor("#6A5ACD")
         .setTitle("💿 Session Summary")
-        .setDescription("Your listening session has ended. Here's a quick recap:")
+        .setDescription("Your listening session has ended. SauraXT is ready for unlimited music anytime! 🎵")
         .addFields(
           { name: "Songs Played", value: `\`${tracksPlayed}\``, inline: true },
           { name: "Total Time", value: `\`${formattedDuration}\``, inline: true }
         )
         .setFooter({ 
-          text: botName, 
+          text: `${botName} • 100% Free & Unlimited Audio`, 
           iconURL: queue.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png" 
         })
         .setTimestamp();

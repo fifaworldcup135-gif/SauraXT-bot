@@ -1,4 +1,21 @@
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import ffmpegPath from 'ffmpeg-static';
+
+if (ffmpegPath) {
+  try {
+    fs.chmodSync(ffmpegPath, 0o755);
+  } catch (e) {}
+  process.env.FFMPEG_PATH = ffmpegPath;
+  try {
+    const ffmpegDir = path.dirname(ffmpegPath);
+    if (process.env.PATH && !process.env.PATH.includes(ffmpegDir)) {
+      process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+    }
+  } catch (e) {}
+}
+
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { loadEvents } from './handlers/eventHandler.js';
 import { loadCommands } from './handlers/commandHandler.js';
