@@ -335,21 +335,29 @@ class MusicManager {
     let streamDurSec = queryResult.durationSec || 180;
     const searchTarget = queryResult.searchQuery || queryResult.title;
 
-    // Search SoundCloud Lossless first
-    const scResults = await play.search(searchTarget, {
-      source: { soundcloud: 'tracks' },
-      limit: 5
-    }).catch(() => []);
+    if (queryResult.source === 'spotify' || queryResult.source === 'search' || queryResult.source === 'web' || !streamUrl) {
+      // Search SoundCloud Lossless first (preferring full-length tracks >= 60s)
+      const scResults = await play.search(searchTarget, {
+        source: { soundcloud: 'tracks' },
+        limit: 10
+      }).catch(() => []);
 
-    if (scResults && scResults.length > 0) {
-      const item = scResults[0];
-      streamUrl = item.url;
-      streamDurSec = item.durationInSec || streamDurSec;
-    } else {
-      const ytResults = await play.search(searchTarget, { limit: 1 }).catch(() => []);
-      if (ytResults && ytResults.length > 0) {
-        streamUrl = ytResults[0].url;
-        streamDurSec = ytResults[0].durationInSec || streamDurSec;
+      const fullSc = scResults.find(s => s.durationInSec && s.durationInSec >= 60);
+
+      if (fullSc) {
+        streamUrl = fullSc.url;
+        streamDurSec = fullSc.durationInSec;
+      } else {
+        // Fallback to YouTube for guaranteed full-length official release
+        const ytResults = await play.search(searchTarget, { limit: 5 }).catch(() => []);
+        const fullYt = ytResults.find(y => y.durationInSec && y.durationInSec >= 60) || ytResults[0];
+        if (fullYt) {
+          streamUrl = fullYt.url;
+          streamDurSec = fullYt.durationInSec || streamDurSec;
+        } else if (scResults.length > 0) {
+          streamUrl = scResults[0].url;
+          streamDurSec = scResults[0].durationInSec || streamDurSec;
+        }
       }
     }
 
@@ -407,18 +415,41 @@ class MusicManager {
     try {
       let stream;
       const target = track.streamUrl || track.url;
-      try {
-        stream = await play.stream(target);
-      } catch (e) {
-        const fallbackResults = await play.search(track.title || track.name, { source: { soundcloud: 'tracks' }, limit: 1 });
-        if (fallbackResults.length > 0) {
-          stream = await play.stream(fallbackResults[0].url);
+      const isDirectStreamable = target && (target.includes('youtube.com') || target.includes('youtu.be') || target.includes('soundcloud.com'));
+
+      if (isDirectStreamable) {
+        try {
+          stream = await play.stream(target);
+        } catch (e) {
+          console.warn('Direct stream attempt failed:', e.message);
+        }
+      }
+
+      if (!stream) {
+        const searchTarget = track.searchQuery || track.title || track.name;
+        // Search SoundCloud first for tracks >= 60s (eliminates preview snippets)
+        const scResults = await play.search(searchTarget, { source: { soundcloud: 'tracks' }, limit: 10 }).catch(() => []);
+        const fullSc = scResults.find(s => s.durationInSec && s.durationInSec >= 60);
+
+        if (fullSc) {
+          track.streamUrl = fullSc.url;
+          track.durationSec = fullSc.durationInSec;
+          track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, '0')}`;
+          stream = await play.stream(fullSc.url);
         } else {
-          const ytFallback = await play.search(track.title || track.name, { limit: 1 });
-          if (ytFallback.length > 0) {
-            stream = await play.stream(ytFallback[0].url);
+          // Fallback to YouTube for full-length official track
+          const ytResults = await play.search(searchTarget, { limit: 5 }).catch(() => []);
+          const fullYt = ytResults.find(y => y.durationInSec && y.durationInSec >= 60) || ytResults[0];
+          if (fullYt) {
+            track.streamUrl = fullYt.url;
+            track.durationSec = fullYt.durationInSec || track.durationSec;
+            track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, '0')}`;
+            stream = await play.stream(fullYt.url);
+          } else if (scResults.length > 0) {
+            track.streamUrl = scResults[0].url;
+            stream = await play.stream(scResults[0].url);
           } else {
-            throw e;
+            throw new Error('Could not find streamable track');
           }
         }
       }
@@ -460,14 +491,15 @@ class MusicManager {
       }
       try {
         const query = queue.currentTrack.artist || queue.currentTrack.title;
-        const related = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 5 }).catch(() => []);
-        const filtered = related.filter(r => r.url !== queue.currentTrack.url);
+        const related = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 10 }).catch(() => []);
+        const filtered = related.filter(r => r.url !== queue.currentTrack.url && r.durationInSec && r.durationInSec >= 60);
         if (filtered.length > 0) {
           const item = filtered[Math.floor(Math.random() * filtered.length)];
           const durSec = item.durationInSec || 180;
           const autoTrack = {
             title: item.name || item.title,
             url: item.url,
+            streamUrl: item.url,
             duration: Math.floor(durSec / 60) + ':' + (durSec % 60 < 10 ? '0' : '') + (durSec % 60),
             durationSec: durSec,
             thumbnail: item.thumbnail,
