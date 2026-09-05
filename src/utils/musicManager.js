@@ -6,8 +6,9 @@ import {
   VoiceConnectionStatus 
 } from '@discordjs/voice';
 import play from 'play-dl';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
+import { resolveMusicQuery } from './urlResolver.js';
 
 class MusicManager {
   constructor() {
@@ -44,6 +45,7 @@ class MusicManager {
         loopQueue: false,
         autoplay: false,
         volume: 100,
+        activeFilter: 'filter_clear',
         startedAt: 0,
         idleTimer: null,
         sessionStats: {
@@ -112,96 +114,115 @@ class MusicManager {
     return '`' + formatS(currentSec) + '` ' + bar + ' `' + formatS(totalSec) + '`';
   }
 
-  createControllerButtons(isPaused = false, isLooping = false, isVip = false, hasPrevious = false) {
+  createControllerComponents(isPaused = false, isLooping = false, hasPrevious = false, activeFilter = 'filter_clear') {
+    // 1. Filter Dropdown Menu
+    const filterSelect = new StringSelectMenuBuilder()
+      .setCustomId('music_filter_select')
+      .setPlaceholder('Click Here To Apply Filters')
+      .addOptions(
+        { label: 'Reset Filters', value: 'filter_clear', description: 'Remove all active audio effects', emoji: '🚫' },
+        { label: 'Bass Boost', value: 'filter_bassboost', description: 'Deep bass enhancement', emoji: '🔊' },
+        { label: 'Nightcore', value: 'filter_nightcore', description: 'Sped up pitch and tempo', emoji: '🌙' },
+        { label: 'Vaporwave', value: 'filter_vaporwave', description: 'Slowed down aesthetic tempo', emoji: '💨' },
+        { label: '8D Audio', value: 'filter_8d', description: 'Spatial 360-degree rotating audio', emoji: '🎧' },
+        { label: 'Tremolo', value: 'filter_tremolo', description: 'Rapid volume oscillation pulse', emoji: '⚡' },
+        { label: 'Karaoke', value: 'filter_karaoke', description: 'Vocal reduction filter', emoji: '🎤' }
+      );
+    const rowFilter = new ActionRowBuilder().addComponents(filterSelect);
+
+    // 2. Buttons Row 1: [⏮️] [🔁] [⏸️/▶️] [🔀] [⏭️]
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('music_back')
-        .setLabel('Back')
         .setEmoji('⏮️')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!hasPrevious),
       new ButtonBuilder()
-        .setCustomId('music_pause')
-        .setLabel(isPaused ? 'Resume' : 'Pause')
-        .setEmoji(isPaused ? '▶️' : '⏸️')
-        .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('music_skip')
-        .setLabel('Skip')
-        .setEmoji('⏭️')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
         .setCustomId('music_loop')
-        .setLabel(isLooping ? 'Loop: ON' : 'Loop: OFF')
         .setEmoji('🔁')
         .setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('music_stop')
-        .setLabel('Stop')
-        .setEmoji('⏹️')
-        .setStyle(ButtonStyle.Danger)
+        .setCustomId('music_pause')
+        .setEmoji(isPaused ? '▶️' : '⏸️')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('music_shuffle')
+        .setEmoji('🔀')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('music_skip')
+        .setEmoji('⏭️')
+        .setStyle(ButtonStyle.Secondary)
     );
 
+    // 3. Buttons Row 2: [⭐] [📜] [⏹️] [🎤] [🔊]
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('music_fav')
-        .setLabel('Favorite')
         .setEmoji('⭐')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('music_queue')
-        .setLabel('Queue')
         .setEmoji('📜')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
+        .setCustomId('music_stop')
+        .setEmoji('⏹️')
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
         .setCustomId('music_lyrics')
-        .setLabel('Lyrics')
         .setEmoji('🎤')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('music_shuffle')
-        .setLabel('Shuffle')
-        .setEmoji('🔀')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
         .setCustomId('music_boost')
-        .setLabel('Boost')
         .setEmoji('🔊')
         .setStyle(ButtonStyle.Secondary)
     );
 
-    return [row1, row2];
+    return [rowFilter, row1, row2];
+  }
+
+  createControllerButtons(isPaused = false, isLooping = false, isVip = false, hasPrevious = false) {
+    return this.createControllerComponents(isPaused, isLooping, hasPrevious);
   }
 
   createNowPlayingEmbed(track, isPaused = false, isLooping = false, queue = null) {
-    const elapsedSec = queue && queue.startedAt ? Math.floor((Date.now() - queue.startedAt) / 1000) : 0;
-    const totalSec = track.durationSec || 210;
-    const progressBar = this.getProgressBar(elapsedSec, totalSec);
+    const autoplayStr = queue?.autoplay ? 'On' : 'Off';
+    const loopStr = isLooping ? 'On' : (queue?.loopQueue ? 'Queue' : 'Off');
+    const volumeVal = queue?.volume || 100;
+    const queueLen = queue?.queue ? queue.queue.length : 0;
+    const requesterTag = track.requestedBy ? `<@${track.requestedBy}>` : 'DJ';
 
-    let embedColor = '#5865F2'; // Lunar Blue
-    if (track.isVip) embedColor = '#FFD700'; // VIP Gold
+    let embedColor = '#2B2D31'; // Dark card theme matching screenshot
+    if (track.isVip) embedColor = '#FFD700';
     else if (track.url?.includes('spotify')) embedColor = '#1DB954';
     else if (track.url?.includes('soundcloud')) embedColor = '#FF5500';
 
-    const upNextTrack = queue && queue.queue.length > 0 ? queue.queue[0] : null;
-
     const embed = new EmbedBuilder()
       .setColor(embedColor)
-      .setTitle(track.isVip ? '👑 VIP EXCLUSIVE • ' + (track.title || track.name) : '🎶 Now Playing • ' + (track.title || track.name))
-      .setURL(track.url)
-      .setThumbnail(track.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png')
+      .setTitle('🔘 NOW PLAYING')
       .setDescription(
-        '👤 **Artist:** `' + (track.artist || track.channel || 'Official Artist') + '`\n' +
-        '⏱️ **Progress:**\n' + progressBar + '\n'
-      )
-      .addFields(
-        { name: '🔊 Audio Fidelity', value: track.isVip ? '💎 `384kbps Ultra HD`' : '⚡ `320kbps Lossless`', inline: true },
-        { name: '🙋 Requester', value: track.requestedBy ? `<@${track.requestedBy}>` : 'DJ', inline: true },
-        { name: '🔁 Loop Mode', value: isLooping ? '`Track Loop 🔂`' : '`Off`', inline: true },
-        { name: '📻 Up Next', value: upNextTrack ? `**[${upNextTrack.title}](${upNextTrack.url})** (\`${upNextTrack.duration || 'HQ'}\`)` : '`End of queue. Autoplay active.`', inline: false }
-      )
-      .setFooter({ text: '🌙 SauraXT & Lunar Audio Suite • Status: ' + (isPaused ? 'Paused ⏸️' : 'Playing ▶️') })
-      .setTimestamp();
+        `**[${track.title}](${track.url})**\n` +
+        `• **Duration:** ${track.duration || 'Unknown'}\n` +
+        `• **Requester:** ${requesterTag}\n\n` +
+        `🔄 **Autoplay:** ${autoplayStr} • **Loop:** ${loopStr} • **Volume:** ${volumeVal} • **Queue:** ${queueLen}`
+      );
+
+    if (queue?.activeFilter && queue.activeFilter !== 'filter_clear') {
+      const filterNames = {
+        filter_bassboost: '🔊 Bass Boost',
+        filter_nightcore: '🌙 Nightcore',
+        filter_vaporwave: '💨 Vaporwave',
+        filter_8d: '🎧 8D Audio',
+        filter_tremolo: '⚡ Tremolo',
+        filter_karaoke: '🎤 Karaoke'
+      };
+      embed.addFields({ name: 'Active Effects', value: `\`${filterNames[queue.activeFilter] || queue.activeFilter}\``, inline: false });
+    }
+
+    if (track.thumbnail) {
+      embed.setThumbnail(track.thumbnail);
+    }
 
     return embed;
   }
@@ -258,91 +279,109 @@ class MusicManager {
       throw new Error('VIP_RESTRICTED: This channel is reserved exclusively for **VIP Members & Server Boosters** 💎! Non-VIP members can play music in public lounges like Squad VC or Chill Lounge.');
     }
 
-    let searchQuery = rawQuery.trim();
-    let trackThumbnail = null;
-    let trackTitle = null;
-    let trackArtist = null;
-    let trackDurationSec = 180;
+    const queryResult = await resolveMusicQuery(rawQuery);
+    const queue = await this.connectVoice(voiceChannel, textChannel);
 
-    if (searchQuery.includes('youtube.com') || searchQuery.includes('youtu.be')) {
-      const ytInfo = await play.video_basic_info(searchQuery).catch(() => null);
-      if (ytInfo && ytInfo.video_details) {
-        searchQuery = ytInfo.video_details.title;
-        trackTitle = ytInfo.video_details.title;
-        trackArtist = ytInfo.video_details.channel?.name || 'Artist';
-        trackThumbnail = ytInfo.video_details.thumbnails[0]?.url;
-        trackDurationSec = ytInfo.video_details.durationInSec || 180;
+    // CASE 1: PLAYLIST (Spotify Album/Playlist, YouTube Playlist, SoundCloud Set)
+    if (queryResult.type === 'playlist') {
+      const tracks = queryResult.tracks;
+      if (!tracks || tracks.length === 0) {
+        throw new Error('NO_RESULTS: Could not find any playable tracks in this playlist.');
+      }
+
+      const firstItem = tracks[0];
+      const firstTrack = {
+        title: firstItem.title,
+        url: firstItem.url,
+        streamUrl: firstItem.url,
+        searchQuery: firstItem.searchQuery || firstItem.title,
+        duration: firstItem.duration || 'HQ',
+        durationSec: firstItem.durationSec || 180,
+        thumbnail: firstItem.thumbnail || queryResult.tracks[0]?.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
+        artist: firstItem.artist || 'Artist',
+        requestedBy: member.id,
+        isVip: isVip,
+        loungeName: voiceChannel.name
+      };
+
+      for (let i = 1; i < tracks.length; i++) {
+        const item = tracks[i];
+        queue.queue.push({
+          title: item.title,
+          url: item.url,
+          streamUrl: item.url,
+          searchQuery: item.searchQuery || item.title,
+          duration: item.duration || 'HQ',
+          durationSec: item.durationSec || 180,
+          thumbnail: item.thumbnail || firstTrack.thumbnail,
+          artist: item.artist || 'Artist',
+          requestedBy: member.id,
+          isVip: isVip,
+          loungeName: voiceChannel.name
+        });
+      }
+
+      if (queue.isPlaying) {
+        queue.queue.unshift(firstTrack);
+        return { status: 'playlist', name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
+      } else {
+        await this.playTrack(voiceChannel.guild.id, firstTrack, false);
+        return { status: 'playing_playlist', name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
       }
     }
 
-    if (searchQuery.includes('spotify.com')) {
-      const spType = play.sp_validate(searchQuery);
-      if (spType === 'track') {
-        const spData = await play.spotify(searchQuery).catch(() => null);
-        if (spData) {
-          searchQuery = spData.name + ' ' + (spData.artists ? spData.artists.map(a => a.name).join(' ') : '');
-          trackTitle = spData.name;
-          trackArtist = spData.artists ? spData.artists[0]?.name : 'Artist';
-          trackThumbnail = spData.thumbnail?.url;
-          trackDurationSec = spData.durationInSec || 180;
-        }
-      }
-    }
+    // CASE 2: SINGLE TRACK
+    let streamUrl = queryResult.url;
+    let streamDurSec = queryResult.durationSec || 180;
+    const searchTarget = queryResult.searchQuery || queryResult.title;
 
-    let track = null;
-    const scResults = await play.search(searchQuery, {
+    // Search SoundCloud Lossless first
+    const scResults = await play.search(searchTarget, {
       source: { soundcloud: 'tracks' },
       limit: 5
     }).catch(() => []);
 
     if (scResults && scResults.length > 0) {
       const item = scResults[0];
-      const durSec = item.durationInSec || trackDurationSec || 180;
-      track = {
-        title: trackTitle || item.name || item.title || searchQuery,
-        url: item.url,
-        duration: Math.floor(durSec / 60) + ':' + (durSec % 60 < 10 ? '0' : '') + (durSec % 60),
-        durationSec: durSec,
-        thumbnail: trackThumbnail || item.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
-        artist: trackArtist || item.user?.name || 'Official Artist',
-        requestedBy: member.id,
-        isVip: isVip,
-        loungeName: voiceChannel.name
-      };
+      streamUrl = item.url;
+      streamDurSec = item.durationInSec || streamDurSec;
     } else {
-      const ytResults = await play.search(searchQuery, { limit: 1 }).catch(() => []);
+      const ytResults = await play.search(searchTarget, { limit: 1 }).catch(() => []);
       if (ytResults && ytResults.length > 0) {
-        const item = ytResults[0];
-        track = {
-          title: item.title,
-          url: item.url,
-          duration: item.durationRaw,
-          durationSec: item.durationInSec || 180,
-          thumbnail: item.thumbnails[0]?.url,
-          artist: item.channel?.name || 'Artist',
-          requestedBy: member.id,
-          isVip: isVip,
-          loungeName: voiceChannel.name
-        };
+        streamUrl = ytResults[0].url;
+        streamDurSec = ytResults[0].durationInSec || streamDurSec;
       }
     }
 
-    if (!track) {
+    if (!streamUrl) {
       throw new Error('NO_RESULTS: Could not find any playable audio for `' + rawQuery + '`');
     }
 
-    const queue = await this.connectVoice(voiceChannel, textChannel);
+    const durFormatted = `${Math.floor(streamDurSec / 60)}:${(streamDurSec % 60).toString().padStart(2, '0')}`;
+
+    const track = {
+      title: queryResult.title,
+      url: queryResult.url || streamUrl,
+      streamUrl: streamUrl,
+      duration: durFormatted,
+      durationSec: streamDurSec,
+      thumbnail: queryResult.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
+      artist: queryResult.artist || 'Artist',
+      requestedBy: member.id,
+      isVip: isVip,
+      loungeName: voiceChannel.name
+    };
 
     if (queue.isPlaying) {
       queue.queue.push(track);
-      return { status: 'queued', track, position: queue.queue.length, isVip };
+      return { status: 'queued', track, position: queue.queue.length, isVip, queue };
     } else {
-      this.playTrack(voiceChannel.guild.id, track);
-      return { status: 'playing', track, isVip };
+      await this.playTrack(voiceChannel.guild.id, track, false);
+      return { status: 'playing', track, isVip, queue };
     }
   }
 
-  async playTrack(guildId, track) {
+  async playTrack(guildId, track, sendCard = true) {
     const queue = this.getQueue(guildId);
     if (queue.currentTrack) {
       queue.previousTracks.push(queue.currentTrack);
@@ -367,14 +406,20 @@ class MusicManager {
 
     try {
       let stream;
+      const target = track.streamUrl || track.url;
       try {
-        stream = await play.stream(track.url);
+        stream = await play.stream(target);
       } catch (e) {
         const fallbackResults = await play.search(track.title || track.name, { source: { soundcloud: 'tracks' }, limit: 1 });
         if (fallbackResults.length > 0) {
           stream = await play.stream(fallbackResults[0].url);
         } else {
-          throw e;
+          const ytFallback = await play.search(track.title || track.name, { limit: 1 });
+          if (ytFallback.length > 0) {
+            stream = await play.stream(ytFallback[0].url);
+          } else {
+            throw e;
+          }
         }
       }
 
@@ -389,9 +434,9 @@ class MusicManager {
 
       queue.player.play(resource);
 
-      if (queue.textChannel) {
+      if (sendCard && queue.textChannel) {
         const embed = this.createNowPlayingEmbed(track, false, queue.isLooping, queue);
-        const components = this.createControllerButtons(false, queue.isLooping, track.isVip, queue.previousTracks.length > 0);
+        const components = this.createControllerComponents(false, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
         queue.textChannel.send({ embeds: [embed], components }).catch(() => {});
       }
     } catch (err) {

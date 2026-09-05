@@ -25,36 +25,35 @@ export async function execute(interaction) {
   try {
     const result = await musicManager.resolveAndPlay(voiceChannel, interaction.channel, rawQuery, interaction.member, guildSettings);
 
+    if (result.status === 'playing') {
+      const embed = musicManager.createNowPlayingEmbed(result.track, false, result.queue.isLooping, result.queue);
+      const components = musicManager.createControllerComponents(false, result.queue.isLooping, result.queue.previousTracks.length > 0, result.queue.activeFilter);
+      return interaction.editReply({ embeds: [embed], components });
+    }
+
+    if (result.status === 'playing_playlist' || result.status === 'playlist') {
+      const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('📂 Loaded Playlist • ' + result.name)
+        .setDescription(`Successfully enqueued **${result.count}** songs from **${result.name}** into **${voiceChannel.name}**!\n\n🎵 **Now Playing:** **[${result.track.title}](${result.track.url})**`)
+        .setThumbnail(result.track.thumbnail)
+        .setFooter({ text: 'Use /queue to see all upcoming songs' });
+      const components = musicManager.createControllerComponents(false, result.queue.isLooping, result.queue.previousTracks.length > 0, result.queue.activeFilter);
+      return interaction.editReply({ embeds: [embed], components });
+    }
+
     if (result.status === 'queued') {
       const embed = new EmbedBuilder()
-        .setColor(result.isVip ? '#FFD700' : config.colors.primary)
+        .setColor(result.isVip ? '#FFD700' : '#5865F2')
         .setTitle(result.isVip ? '👑 VIP Added to Queue (Position #' + result.position + ')' : '➕ Added to Queue (Position #' + result.position + ')')
         .setDescription('**[' + result.track.title + '](' + result.track.url + ')**')
         .setThumbnail(result.track.thumbnail)
         .addFields(
-          { name: '👤 Artist / Channel', value: result.track.artist, inline: true },
-          { name: '⏱️ Duration', value: result.track.duration, inline: true },
-          { name: '🙋 Requested By', value: '<@' + interaction.user.id + '>' + (result.isVip ? ' ⭐ VIP Pass' : ''), inline: true }
+          { name: '⏱️ Duration', value: result.track.duration || 'HQ', inline: true },
+          { name: '👤 Artist', value: result.track.artist || 'Artist', inline: true },
+          { name: '🙋 Requested By', value: '<@' + interaction.user.id + '>' + (result.isVip ? ' ⭐ VIP' : ''), inline: true }
         )
-        .setFooter({ text: 'Use /queue to see upcoming tracks' });
-
-      return interaction.editReply({ embeds: [embed] });
-    } else {
-      const embed = new EmbedBuilder()
-        .setColor(result.isVip ? '#FFD700' : config.colors.success)
-        .setTitle(result.isVip ? '👑 VIP Lounge • Now Playing' : '🎵 Playing Track')
-        .setDescription('**[' + result.track.title + '](' + result.track.url + ')** in **' + voiceChannel.name + '**')
-        .setThumbnail(result.track.thumbnail)
-        .addFields(
-          { name: '👤 Artist', value: result.track.artist, inline: true },
-          { name: '⏱️ Duration', value: result.track.duration, inline: true }
-        );
-
-      if (result.isVip) {
-        embed.addFields(
-          { name: '💎 VIP Privileges', value: 'Lossless 384kbps • Ultra HD Stream Active', inline: false }
-        );
-      }
+        .setFooter({ text: 'Use /queue to view all upcoming tracks' });
 
       return interaction.editReply({ embeds: [embed] });
     }

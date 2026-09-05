@@ -14,7 +14,7 @@ export async function execute(interaction) {
   }
 
   const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
-  const components = musicManager.createControllerButtons(queue.isPaused, queue.isLooping, queue.currentTrack?.isVip, queue.previousTracks.length > 0);
+  const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
 
   return interaction.reply({ embeds: [embed], components });
 }

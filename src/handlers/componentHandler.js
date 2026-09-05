@@ -17,7 +17,19 @@ import { getLyrics } from '../utils/lyrics.js';
 export async function handleComponentInteraction(interaction, client) {
   const customId = interaction.customId;
 
-  // --- 0. MUSIC CONTROLLER BUTTONS (Groove + Lunar Suite) ---
+  // --- 0. MUSIC CONTROLLER BUTTONS & FILTERS (Groove + Lunar Suite) ---
+  if (customId === 'music_filter_select') {
+    const queue = musicManager.getQueue(interaction.guildId);
+    if (!queue.currentTrack) {
+      return interaction.reply({ content: '❌ No music is currently playing to apply filters to.', ephemeral: true });
+    }
+    const filter = interaction.values[0];
+    queue.activeFilter = filter;
+    const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
+    const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
+    return interaction.update({ embeds: [embed], components });
+  }
+
   if (customId === 'music_back') {
     const queue = musicManager.getQueue(interaction.guildId);
     if (!queue.previousTracks || queue.previousTracks.length === 0) {
@@ -36,12 +48,12 @@ export async function handleComponentInteraction(interaction, client) {
     if (queue.isPaused) {
       musicManager.resume(interaction.guildId);
       const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, false, queue.isLooping, queue);
-      const components = musicManager.createControllerButtons(false, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+      const components = musicManager.createControllerComponents(false, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
       return interaction.update({ embeds: [embed], components });
     } else {
       musicManager.pause(interaction.guildId);
       const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, true, queue.isLooping, queue);
-      const components = musicManager.createControllerButtons(true, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+      const components = musicManager.createControllerComponents(true, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
       return interaction.update({ embeds: [embed], components });
     }
   }
@@ -62,7 +74,7 @@ export async function handleComponentInteraction(interaction, client) {
     }
     queue.isLooping = !queue.isLooping;
     const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
-    const components = musicManager.createControllerButtons(queue.isPaused, queue.isLooping, queue.currentTrack.isVip, queue.previousTracks.length > 0);
+    const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
     return interaction.update({ embeds: [embed], components });
   }
 
