@@ -13,8 +13,6 @@ export async function execute(interaction) {
     return interaction.reply({ embeds: [errorEmbed('Nothing Playing', 'There is no music currently active.')], ephemeral: true });
   }
 
-  const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
-  const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
-
-  return interaction.reply({ embeds: [embed], components });
+  const embed = await musicManager.createNowPlayingEmbed(queue.currentTrack, queue);
+  return interaction.reply({ embeds: [embed] });
 }

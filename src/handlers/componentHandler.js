@@ -25,7 +25,7 @@ export async function handleComponentInteraction(interaction, client) {
     }
     const filter = interaction.values[0];
     queue.activeFilter = filter;
-    const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
+    const embed = await musicManager.createNowPlayingEmbed(queue.currentTrack, queue);
     const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
     return interaction.update({ embeds: [embed], components });
   }
@@ -47,12 +47,12 @@ export async function handleComponentInteraction(interaction, client) {
 
     if (queue.isPaused) {
       musicManager.resume(interaction.guildId);
-      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, false, queue.isLooping, queue);
+      const embed = await musicManager.createNowPlayingEmbed(queue.currentTrack, queue);
       const components = musicManager.createControllerComponents(false, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
       return interaction.update({ embeds: [embed], components });
     } else {
       musicManager.pause(interaction.guildId);
-      const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, true, queue.isLooping, queue);
+      const embed = await musicManager.createNowPlayingEmbed(queue.currentTrack, queue);
       const components = musicManager.createControllerComponents(true, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
       return interaction.update({ embeds: [embed], components });
     }
@@ -73,7 +73,7 @@ export async function handleComponentInteraction(interaction, client) {
       return interaction.reply({ content: '❌ No music is currently playing.', ephemeral: true });
     }
     queue.isLooping = !queue.isLooping;
-    const embed = musicManager.createNowPlayingEmbed(queue.currentTrack, queue.isPaused, queue.isLooping, queue);
+    const embed = await musicManager.createNowPlayingEmbed(queue.currentTrack, queue);
     const components = musicManager.createControllerComponents(queue.isPaused, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
     return interaction.update({ embeds: [embed], components });
   }

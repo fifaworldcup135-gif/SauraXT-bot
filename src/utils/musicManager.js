@@ -1,14 +1,16 @@
-import { 
+﻿import { 
   joinVoiceChannel, 
   createAudioPlayer, 
   createAudioResource, 
   AudioPlayerStatus, 
   VoiceConnectionStatus 
-} from '@discordjs/voice';
-import play from 'play-dl';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, PermissionFlagsBits } from 'discord.js';
-import { config } from '../config.js';
-import { resolveMusicQuery } from './urlResolver.js';
+} from "@discordjs/voice";
+import play from "play-dl";
+import { EmbedBuilder, PermissionFlagsBits, ActivityType } from "discord.js";
+import { config } from "../config.js";
+import { resolveMusicQuery } from "./urlResolver.js";
+import { fetchLyrics } from "./lunarLyrics.js";
+import { fetchTrackMetadata, getPlatformEmoji, getPlatformColor } from "./lunarMetadata.js";
 
 class MusicManager {
   constructor() {
@@ -21,10 +23,10 @@ class MusicManager {
       const clientId = await play.getFreeClientID();
       if (clientId) {
         await play.setToken({ soundcloud: { client_id: clientId } });
-        console.log('🎵 Audio Streaming Engine initialized with high-quality stream provider.');
+        console.log("🎵 Lunar Audio Engine: Lossless streaming provider ready.");
       }
     } catch (err) {
-      console.error('Audio engine init error:', err.message);
+      console.error("Lunar Audio Engine init error:", err.message);
     }
   }
 
@@ -34,6 +36,7 @@ class MusicManager {
         guildId,
         voiceChannel: null,
         textChannel: null,
+        client: null,
         connection: null,
         player: null,
         queue: [],
@@ -45,7 +48,7 @@ class MusicManager {
         loopQueue: false,
         autoplay: false,
         volume: 100,
-        activeFilter: 'filter_clear',
+        activeFilter: "filter_clear",
         startedAt: 0,
         idleTimer: null,
         sessionStats: {
@@ -69,14 +72,14 @@ class MusicManager {
     if (member.roles?.cache) {
       return member.roles.cache.some(r => {
         const name = r.name.toLowerCase();
-        return name.includes('vip') || 
-               name.includes('booster') || 
-               name.includes('nitro') || 
-               name.includes('og') || 
-               name.includes('owner') || 
-               name.includes('ceo') || 
-               name.includes('mod') || 
-               name.includes('admin');
+        return name.includes("vip") || 
+               name.includes("booster") || 
+               name.includes("nitro") || 
+               name.includes("og") || 
+               name.includes("owner") || 
+               name.includes("ceo") || 
+               name.includes("mod") || 
+               name.includes("admin");
       });
     }
     return false;
@@ -89,12 +92,12 @@ class MusicManager {
     if (vipVoiceId && voiceChannel?.id === vipVoiceId) return true;
     if (vipTextId && textChannel?.id === vipTextId) return true;
 
-    const tName = (textChannel?.name || '').toLowerCase();
-    const tCategory = (textChannel?.parent?.name || '').toLowerCase();
-    const vName = (voiceChannel?.name || '').toLowerCase();
-    const vCategory = (voiceChannel?.parent?.name || '').toLowerCase();
+    const tName = (textChannel?.name || "").toLowerCase();
+    const tCategory = (textChannel?.parent?.name || "").toLowerCase();
+    const vName = (voiceChannel?.name || "").toLowerCase();
+    const vCategory = (voiceChannel?.parent?.name || "").toLowerCase();
 
-    return tName.includes('vip') || tCategory.includes('vip') || vName.includes('vip') || vCategory.includes('vip');
+    return tName.includes("vip") || tCategory.includes("vip") || vName.includes("vip") || vCategory.includes("vip");
   }
 
   getProgressBar(currentSec, totalSec = 180, barSize = 14) {
@@ -107,118 +110,71 @@ class MusicManager {
     const formatS = s => {
       const mins = Math.floor(s / 60);
       const secs = Math.floor(s % 60);
-      return (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+      return (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
     };
 
-    const bar = '▬'.repeat(Math.max(progressChars - 1, 0)) + '🔘' + '▬'.repeat(emptyChars);
-    return '`' + formatS(currentSec) + '` ' + bar + ' `' + formatS(totalSec) + '`';
+    return "`" + formatS(currentSec) + "` " + "━".repeat(progressChars) + "🔘" + "━".repeat(emptyChars) + " `" + formatS(totalSec) + "`";
   }
 
-  createControllerComponents(isPaused = false, isLooping = false, hasPrevious = false, activeFilter = 'filter_clear') {
-    // 1. Filter Dropdown Menu
-    const filterSelect = new StringSelectMenuBuilder()
-      .setCustomId('music_filter_select')
-      .setPlaceholder('Click Here To Apply Filters')
-      .addOptions(
-        { label: 'Reset Filters', value: 'filter_clear', description: 'Remove all active audio effects', emoji: '🚫' },
-        { label: 'Bass Boost', value: 'filter_bassboost', description: 'Deep bass enhancement', emoji: '🔊' },
-        { label: 'Nightcore', value: 'filter_nightcore', description: 'Sped up pitch and tempo', emoji: '🌙' },
-        { label: 'Vaporwave', value: 'filter_vaporwave', description: 'Slowed down aesthetic tempo', emoji: '💨' },
-        { label: '8D Audio', value: 'filter_8d', description: 'Spatial 360-degree rotating audio', emoji: '🎧' },
-        { label: 'Tremolo', value: 'filter_tremolo', description: 'Rapid volume oscillation pulse', emoji: '⚡' },
-        { label: 'Karaoke', value: 'filter_karaoke', description: 'Vocal reduction filter', emoji: '🎤' }
-      );
-    const rowFilter = new ActionRowBuilder().addComponents(filterSelect);
-
-    // 2. Buttons Row 1: [⏮️] [🔁] [⏸️/▶️] [🔀] [⏭️]
-    const row1 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('music_back')
-        .setEmoji('⏮️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(!hasPrevious),
-      new ButtonBuilder()
-        .setCustomId('music_loop')
-        .setEmoji('🔁')
-        .setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('music_pause')
-        .setEmoji(isPaused ? '▶️' : '⏸️')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('music_shuffle')
-        .setEmoji('🔀')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('music_skip')
-        .setEmoji('⏭️')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    // 3. Buttons Row 2: [⭐] [📜] [⏹️] [🎤] [🔊]
-    const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('music_fav')
-        .setEmoji('⭐')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('music_queue')
-        .setEmoji('📜')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('music_stop')
-        .setEmoji('⏹️')
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
-        .setCustomId('music_lyrics')
-        .setEmoji('🎤')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('music_boost')
-        .setEmoji('🔊')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return [rowFilter, row1, row2];
+  createControllerComponents() {
+    return [];
   }
 
-  createControllerButtons(isPaused = false, isLooping = false, isVip = false, hasPrevious = false) {
-    return this.createControllerComponents(isPaused, isLooping, hasPrevious);
+  createControllerButtons() {
+    return [];
   }
 
-  createNowPlayingEmbed(track, isPaused = false, isLooping = false, queue = null) {
-    const autoplayStr = queue?.autoplay ? 'On' : 'Off';
-    const loopStr = isLooping ? 'On' : (queue?.loopQueue ? 'Queue' : 'Off');
-    const volumeVal = queue?.volume || 100;
-    const queueLen = queue?.queue ? queue.queue.length : 0;
-    const requesterTag = track.requestedBy ? `<@${track.requestedBy}>` : 'DJ';
+  // 1:1 Exact Lunar Music Now Playing Embed (relentiousdragon/lunar-music trackStart.js)
+  async createNowPlayingEmbed(track, queue = null) {
+    const platformEmoji = getPlatformEmoji(track);
+    const color = getPlatformColor(track);
+    const artistName = track.artist || "Unknown Artist";
 
-    let embedColor = '#2B2D31'; // Dark card theme matching screenshot
-    if (track.isVip) embedColor = '#FFD700';
-    else if (track.url?.includes('spotify')) embedColor = '#1DB954';
-    else if (track.url?.includes('soundcloud')) embedColor = '#FF5500';
+    // Fetch live Deezer metadata (artist avatar, release date) & lrclib synced lyrics
+    const [lyrics, metadata] = await Promise.all([
+      fetchLyrics(track).catch(() => null),
+      fetchTrackMetadata(track.title, artistName).catch(() => null)
+    ]);
+
+    const footerIcon = metadata?.artistPfp || (queue?.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png");
+    let footerText = `${artistName}`;
+    if (metadata?.releaseDate) {
+      footerText += `  •  ${metadata.releaseDate}`;
+    }
 
     const embed = new EmbedBuilder()
-      .setColor(embedColor)
-      .setTitle('🔘 NOW PLAYING')
-      .setDescription(
-        `**[${track.title}](${track.url})**\n` +
-        `• **Duration:** ${track.duration || 'Unknown'}\n` +
-        `• **Requester:** ${requesterTag}\n\n` +
-        `🔄 **Autoplay:** ${autoplayStr} • **Loop:** ${loopStr} • **Volume:** ${volumeVal} • **Queue:** ${queueLen}`
+      .setTitle("Now Playing")
+      .setDescription(`${platformEmoji} [${track.title}](${track.url})`)
+      .addFields(
+        { name: "Duration", value: `\`${track.duration || "00:00"}\``, inline: true },
+        { name: "Requested By", value: `<@${track.requestedBy || "User"}>`, inline: true }
       );
 
-    if (queue?.activeFilter && queue.activeFilter !== 'filter_clear') {
-      const filterNames = {
-        filter_bassboost: '🔊 Bass Boost',
-        filter_nightcore: '🌙 Nightcore',
-        filter_vaporwave: '💨 Vaporwave',
-        filter_8d: '🎧 8D Audio',
-        filter_tremolo: '⚡ Tremolo',
-        filter_karaoke: '🎤 Karaoke'
-      };
-      embed.addFields({ name: 'Active Effects', value: `\`${filterNames[queue.activeFilter] || queue.activeFilter}\``, inline: false });
+    if (queue && queue.queue && queue.queue.length > 0) {
+      const nextTrack = queue.queue[0];
+      const nextTitle = nextTrack.title || nextTrack.name || "Unknown Track";
+      const truncatedNextTitle = nextTitle.length > 25 ? nextTitle.substring(0, 23) + "..." : nextTitle;
+      embed.addFields({ name: "Up Next", value: `\`${truncatedNextTitle}\``, inline: true });
     }
+
+    if (lyrics) {
+      embed.addFields({ name: "Lyrics", value: `\`\`\`\n${lyrics.slice(0, 1000)}\n\`\`\`` });
+    }
+
+    if (queue && queue.activeFilter && queue.activeFilter !== "filter_clear") {
+      const filterNames = {
+        filter_bassboost: "Bass Boost",
+        filter_nightcore: "Nightcore",
+        filter_vaporwave: "Vaporwave",
+        filter_8d: "8D Audio",
+        filter_tremolo: "Tremolo",
+        filter_karaoke: "Karaoke"
+      };
+      embed.addFields({ name: "Active Effects", value: `\`${filterNames[queue.activeFilter] || queue.activeFilter}\``, inline: false });
+    }
+
+    embed.setColor(color)
+      .setFooter({ text: footerText, iconURL: footerIcon });
 
     if (track.thumbnail) {
       embed.setThumbnail(track.thumbnail);
@@ -231,6 +187,7 @@ class MusicManager {
     const queue = this.getQueue(voiceChannel.guild.id);
     queue.voiceChannel = voiceChannel;
     queue.textChannel = textChannel;
+    queue.client = voiceChannel.client;
 
     if (!queue.connection || queue.connection.state.status === VoiceConnectionStatus.Destroyed) {
       queue.connection = joinVoiceChannel({
@@ -243,18 +200,26 @@ class MusicManager {
       queue.player = createAudioPlayer();
       queue.connection.subscribe(queue.player);
 
-      queue.player.on(AudioPlayerStatus.Idle, () => {
-        if (queue.isLooping && queue.currentTrack) {
-          this.playTrack(voiceChannel.guild.id, queue.currentTrack);
-        } else {
-          this.playNext(voiceChannel.guild.id);
+      // CRITICAL FIX FOR LOOP BUG:
+      // In @discordjs/voice, listen only to stateChange from Playing -> Idle!
+      // This prevents initial idle triggers, stop() loops, and spurious replays.
+      queue.player.on("stateChange", (oldState, newState) => {
+        if (oldState.status === AudioPlayerStatus.Playing && newState.status === AudioPlayerStatus.Idle) {
+          if (queue.isLooping && queue.currentTrack) {
+            this.playTrack(voiceChannel.guild.id, queue.currentTrack);
+          } else if (queue.loopQueue && queue.currentTrack) {
+            queue.queue.push(queue.currentTrack);
+            this.playNext(voiceChannel.guild.id);
+          } else {
+            this.playNext(voiceChannel.guild.id);
+          }
         }
       });
 
-      queue.player.on('error', err => {
-        console.error('Audio Player Error:', err);
+      queue.player.on("error", err => {
+        console.error("Audio Player Error:", err);
         if (queue.textChannel) {
-          queue.textChannel.send('⚠️ Audio playback glitch encountered. Skipping to next song...').catch(() => {});
+          queue.textChannel.send("⚠️ Audio playback glitch encountered. Skipping to next song...").catch(() => {});
         }
         this.playNext(voiceChannel.guild.id);
       });
@@ -268,7 +233,7 @@ class MusicManager {
     if (botMember) {
       const perms = voiceChannel.permissionsFor(botMember);
       if (!perms.has(PermissionFlagsBits.ViewChannel) || !perms.has(PermissionFlagsBits.Connect) || !perms.has(PermissionFlagsBits.Speak)) {
-        throw new Error('MISSING_PERMS: I need View Channel, Connect, and Speak permissions in `' + voiceChannel.name + '`! Please give SauraXT Administrator permissions in Server Settings.');
+        throw new Error("MISSING_PERMS: I need View Channel, Connect, and Speak permissions in `" + voiceChannel.name + "`! Please give SauraXT Administrator permissions in Server Settings.");
       }
     }
 
@@ -276,17 +241,17 @@ class MusicManager {
     const isVip = this.isVipMember(member, guildSettings);
 
     if (inVipLounge && !isVip) {
-      throw new Error('VIP_RESTRICTED: This channel is reserved exclusively for **VIP Members & Server Boosters** 💎! Non-VIP members can play music in public lounges like Squad VC or Chill Lounge.');
+      throw new Error("VIP_RESTRICTED: This channel is reserved exclusively for **VIP Members & Server Boosters** 💎! Non-VIP members can play music in public lounges like Squad VC or Chill Lounge.");
     }
 
     const queryResult = await resolveMusicQuery(rawQuery);
     const queue = await this.connectVoice(voiceChannel, textChannel);
 
-    // CASE 1: PLAYLIST (Spotify Album/Playlist, YouTube Playlist, SoundCloud Set)
-    if (queryResult.type === 'playlist') {
+    // CASE 1: PLAYLIST
+    if (queryResult.type === "playlist") {
       const tracks = queryResult.tracks;
       if (!tracks || tracks.length === 0) {
-        throw new Error('NO_RESULTS: Could not find any playable tracks in this playlist.');
+        throw new Error("NO_RESULTS: Could not find any playable tracks in this playlist.");
       }
 
       const firstItem = tracks[0];
@@ -295,10 +260,10 @@ class MusicManager {
         url: firstItem.url,
         streamUrl: firstItem.url,
         searchQuery: firstItem.searchQuery || firstItem.title,
-        duration: firstItem.duration || 'HQ',
+        duration: firstItem.duration || "HQ",
         durationSec: firstItem.durationSec || 180,
-        thumbnail: firstItem.thumbnail || queryResult.tracks[0]?.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
-        artist: firstItem.artist || 'Artist',
+        thumbnail: firstItem.thumbnail || queryResult.tracks[0]?.thumbnail || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png",
+        artist: firstItem.artist || "Artist",
         requestedBy: member.id,
         isVip: isVip,
         loungeName: voiceChannel.name
@@ -311,10 +276,10 @@ class MusicManager {
           url: item.url,
           streamUrl: item.url,
           searchQuery: item.searchQuery || item.title,
-          duration: item.duration || 'HQ',
+          duration: item.duration || "HQ",
           durationSec: item.durationSec || 180,
           thumbnail: item.thumbnail || firstTrack.thumbnail,
-          artist: item.artist || 'Artist',
+          artist: item.artist || "Artist",
           requestedBy: member.id,
           isVip: isVip,
           loungeName: voiceChannel.name
@@ -323,10 +288,10 @@ class MusicManager {
 
       if (queue.isPlaying) {
         queue.queue.unshift(firstTrack);
-        return { status: 'playlist', name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
+        return { status: "playlist", name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
       } else {
         await this.playTrack(voiceChannel.guild.id, firstTrack, false);
-        return { status: 'playing_playlist', name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
+        return { status: "playing_playlist", name: queryResult.name, count: tracks.length, track: firstTrack, isVip, queue };
       }
     }
 
@@ -335,10 +300,10 @@ class MusicManager {
     let streamDurSec = queryResult.durationSec || 180;
     const searchTarget = queryResult.searchQuery || queryResult.title;
 
-    if (queryResult.source === 'spotify' || queryResult.source === 'search' || queryResult.source === 'web' || !streamUrl) {
+    if (queryResult.source === "spotify" || queryResult.source === "search" || queryResult.source === "web" || !streamUrl) {
       // Search SoundCloud Lossless first (preferring full-length tracks >= 60s)
       const scResults = await play.search(searchTarget, {
-        source: { soundcloud: 'tracks' },
+        source: { soundcloud: "tracks" },
         limit: 10
       }).catch(() => []);
 
@@ -362,10 +327,10 @@ class MusicManager {
     }
 
     if (!streamUrl) {
-      throw new Error('NO_RESULTS: Could not find any playable audio for `' + rawQuery + '`');
+      throw new Error("NO_RESULTS: Could not find any playable audio for `" + rawQuery + "`");
     }
 
-    const durFormatted = `${Math.floor(streamDurSec / 60)}:${(streamDurSec % 60).toString().padStart(2, '0')}`;
+    const durFormatted = `${Math.floor(streamDurSec / 60)}:${(streamDurSec % 60).toString().padStart(2, "0")}`;
 
     const track = {
       title: queryResult.title,
@@ -373,8 +338,8 @@ class MusicManager {
       streamUrl: streamUrl,
       duration: durFormatted,
       durationSec: streamDurSec,
-      thumbnail: queryResult.thumbnail || 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png',
-      artist: queryResult.artist || 'Artist',
+      thumbnail: queryResult.thumbnail || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png",
+      artist: queryResult.artist || "Artist",
       requestedBy: member.id,
       isVip: isVip,
       loungeName: voiceChannel.name
@@ -382,10 +347,10 @@ class MusicManager {
 
     if (queue.isPlaying) {
       queue.queue.push(track);
-      return { status: 'queued', track, position: queue.queue.length, isVip, queue };
+      return { status: "queued", track, position: queue.queue.length, isVip, queue };
     } else {
       await this.playTrack(voiceChannel.guild.id, track, false);
-      return { status: 'playing', track, isVip, queue };
+      return { status: "playing", track, isVip, queue };
     }
   }
 
@@ -407,34 +372,43 @@ class MusicManager {
       queue.idleTimer = null;
     }
 
-    // Set Lunar Voice Channel Status
+    // Set Lunar Voice Channel Status (Screenshot 4)
     if (queue.voiceChannel && queue.voiceChannel.setStatus) {
-      queue.voiceChannel.setStatus('🎶 ' + (track.title.length > 45 ? track.title.slice(0, 42) + '...' : track.title)).catch(() => {});
+      const truncatedTitle = track.title.length > 30 ? track.title.slice(0, 30) + "..." : track.title;
+      queue.voiceChannel.setStatus(`💿 Now Playing: ${truncatedTitle}`).catch(() => {});
+    }
+
+    // Set Lunar Discord Activity / Rich Presence (Screenshot 3)
+    if (queue.client?.user?.setPresence) {
+      queue.client.user.setPresence({
+        activities: [{ name: `${track.artist} - ${track.title}`, type: ActivityType.Listening }],
+        status: "online"
+      });
     }
 
     try {
       let stream;
       const target = track.streamUrl || track.url;
-      const isDirectStreamable = target && (target.includes('youtube.com') || target.includes('youtu.be') || target.includes('soundcloud.com'));
+      const isDirectStreamable = target && (target.includes("youtube.com") || target.includes("youtu.be") || target.includes("soundcloud.com"));
 
       if (isDirectStreamable) {
         try {
           stream = await play.stream(target);
         } catch (e) {
-          console.warn('Direct stream attempt failed:', e.message);
+          console.warn("Direct stream attempt failed:", e.message);
         }
       }
 
       if (!stream) {
         const searchTarget = track.searchQuery || track.title || track.name;
         // Search SoundCloud first for tracks >= 60s (eliminates preview snippets)
-        const scResults = await play.search(searchTarget, { source: { soundcloud: 'tracks' }, limit: 10 }).catch(() => []);
+        const scResults = await play.search(searchTarget, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
         const fullSc = scResults.find(s => s.durationInSec && s.durationInSec >= 60);
 
         if (fullSc) {
           track.streamUrl = fullSc.url;
           track.durationSec = fullSc.durationInSec;
-          track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, '0')}`;
+          track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, "0")}`;
           stream = await play.stream(fullSc.url);
         } else {
           // Fallback to YouTube for full-length official track
@@ -443,13 +417,13 @@ class MusicManager {
           if (fullYt) {
             track.streamUrl = fullYt.url;
             track.durationSec = fullYt.durationInSec || track.durationSec;
-            track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, '0')}`;
+            track.duration = `${Math.floor(track.durationSec / 60)}:${(track.durationSec % 60).toString().padStart(2, "0")}`;
             stream = await play.stream(fullYt.url);
           } else if (scResults.length > 0) {
             track.streamUrl = scResults[0].url;
             stream = await play.stream(scResults[0].url);
           } else {
-            throw new Error('Could not find streamable track');
+            throw new Error("Could not find streamable track");
           }
         }
       }
@@ -466,14 +440,13 @@ class MusicManager {
       queue.player.play(resource);
 
       if (sendCard && queue.textChannel) {
-        const embed = this.createNowPlayingEmbed(track, false, queue.isLooping, queue);
-        const components = this.createControllerComponents(false, queue.isLooping, queue.previousTracks.length > 0, queue.activeFilter);
-        queue.textChannel.send({ embeds: [embed], components }).catch(() => {});
+        const embed = await this.createNowPlayingEmbed(track, queue);
+        queue.textChannel.send({ embeds: [embed] }).catch(() => {});
       }
     } catch (err) {
-      console.error('Failed to stream audio:', err);
+      console.error("Failed to stream audio:", err);
       if (queue.textChannel) {
-        queue.textChannel.send('❌ Could not stream this track. Skipping...').catch(() => {});
+        queue.textChannel.send("❌ Could not stream this track. Skipping...").catch(() => {});
       }
       this.playNext(guildId);
     }
@@ -483,15 +456,15 @@ class MusicManager {
     const queue = this.getQueue(guildId);
     if (queue.queue.length > 0) {
       const nextTrack = queue.queue.shift();
-      this.playTrack(guildId, nextTrack);
+      await this.playTrack(guildId, nextTrack);
     } else if (queue.autoplay && queue.currentTrack) {
       // Autoplay feature: fetch related track
       if (queue.textChannel) {
-        queue.textChannel.send('🎲 **Autoplay:** Finding similar song to keep the vibes going...').catch(() => {});
+        queue.textChannel.send("🎲 **Autoplay:** Finding similar song to keep the vibes going...").catch(() => {});
       }
       try {
         const query = queue.currentTrack.artist || queue.currentTrack.title;
-        const related = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 10 }).catch(() => []);
+        const related = await play.search(query, { source: { soundcloud: "tracks" }, limit: 10 }).catch(() => []);
         const filtered = related.filter(r => r.url !== queue.currentTrack.url && r.durationInSec && r.durationInSec >= 60);
         if (filtered.length > 0) {
           const item = filtered[Math.floor(Math.random() * filtered.length)];
@@ -500,10 +473,10 @@ class MusicManager {
             title: item.name || item.title,
             url: item.url,
             streamUrl: item.url,
-            duration: Math.floor(durSec / 60) + ':' + (durSec % 60 < 10 ? '0' : '') + (durSec % 60),
+            duration: Math.floor(durSec / 60) + ":" + (durSec % 60 < 10 ? "0" : "") + (durSec % 60),
             durationSec: durSec,
             thumbnail: item.thumbnail,
-            artist: item.user?.name || 'Recommended Artist',
+            artist: item.user?.name || "Recommended Artist",
             requestedBy: null,
             isVip: queue.currentTrack.isVip,
             loungeName: queue.voiceChannel?.name
@@ -511,7 +484,7 @@ class MusicManager {
           return this.playTrack(guildId, autoTrack);
         }
       } catch (err) {
-        console.error('Autoplay error:', err);
+        console.error("Autoplay error:", err);
       }
       this.finishPlayback(guildId);
     } else {
@@ -519,35 +492,60 @@ class MusicManager {
     }
   }
 
+  // 1:1 Exact Lunar Music Session Summary Embed (relentiousdragon/lunar-music trackEnd.js)
   finishPlayback(guildId) {
     const queue = this.getQueue(guildId);
+    if (!queue.isPlaying && !queue.currentTrack) return;
+
+    const totalSeconds = Math.max(1, Math.round((Date.now() - queue.sessionStats.startTime) / 1000));
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    const formattedDuration = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    const tracksPlayed = queue.sessionStats.tracksPlayed;
+
     queue.currentTrack = null;
     queue.isPlaying = false;
+    queue.isLooping = false;
+    queue.loopQueue = false;
 
-    // Reset voice channel status
+    // Reset voice channel status (Screenshot 4)
     if (queue.voiceChannel && queue.voiceChannel.setStatus) {
-      queue.voiceChannel.setStatus('').catch(() => {});
+      queue.voiceChannel.setStatus("").catch(() => {});
     }
 
-    if (queue.textChannel) {
-      const sessionMinutes = Math.max(1, Math.round((Date.now() - queue.sessionStats.startTime) / 60000));
+    // Reset bot rich presence activity (Screenshot 3)
+    if (queue.client?.user?.setPresence) {
+      queue.client.user.setPresence({
+        activities: [{ name: "music for the vibes", type: ActivityType.Playing }],
+        status: "idle"
+      });
+    }
+
+    // Send Lunar Session Summary Embed (Screenshot 2)
+    if (queue.textChannel && tracksPlayed > 0) {
       const summaryEmbed = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setTitle('📊 Music Session Ended')
-        .setDescription(
-          'Queue is finished! Leaving the voice channel in 5m if idle.\n\n' +
-          '🎵 **Tracks Played:** `' + queue.sessionStats.tracksPlayed + '`\n' +
-          '⏱️ **Session Duration:** `' + sessionMinutes + ' min`\n' +
-          '💡 *Tip: Use `/autoplay` to keep music playing indefinitely!*'
+        .setColor("#6A5ACD")
+        .setTitle("💿 Session Summary")
+        .setDescription("Your listening session has ended. Here's a quick recap:")
+        .addFields(
+          { name: "Songs Played", value: `\`${tracksPlayed}\``, inline: true },
+          { name: "Total Time", value: `\`${formattedDuration}\``, inline: true }
         )
-        .setFooter({ text: 'SauraXT & Lunar Audio Engine' })
+        .setFooter({ 
+          text: "Lunar", 
+          iconURL: queue.client?.user?.displayAvatarURL() || "https://cdn-icons-png.flaticon.com/512/3844/3844724.png" 
+        })
         .setTimestamp();
 
       queue.textChannel.send({ embeds: [summaryEmbed] }).catch(() => {});
     }
 
+    // Disconnect after 5m of idle time
+    if (queue.idleTimer) clearTimeout(queue.idleTimer);
     queue.idleTimer = setTimeout(() => {
-      this.stop(guildId);
+      if (!queue.isPlaying && queue.queue.length === 0) {
+        this.stop(guildId);
+      }
     }, 5 * 60 * 1000);
   }
 
@@ -572,32 +570,11 @@ class MusicManager {
     return true;
   }
 
-  clearQueue(guildId) {
-    const queue = this.getQueue(guildId);
-    const count = queue.queue.length;
-    queue.queue = [];
-    return count;
-  }
-
-  removeTrack(guildId, index) {
-    const queue = this.getQueue(guildId);
-    if (index < 0 || index >= queue.queue.length) return null;
-    const removed = queue.queue.splice(index, 1);
-    return removed[0];
-  }
-
-  moveTrack(guildId, fromIndex, toIndex) {
-    const queue = this.getQueue(guildId);
-    if (fromIndex < 0 || fromIndex >= queue.queue.length || toIndex < 0 || toIndex >= queue.queue.length) return false;
-    const [track] = queue.queue.splice(fromIndex, 1);
-    queue.queue.splice(toIndex, 0, track);
-    return true;
-  }
-
   skip(guildId) {
     const queue = this.getQueue(guildId);
+    if (!queue.isPlaying && !queue.currentTrack) return false;
     if (queue.player) {
-      queue.player.stop();
+      queue.player.stop(true);
       return true;
     }
     return false;
@@ -605,7 +582,7 @@ class MusicManager {
 
   pause(guildId) {
     const queue = this.getQueue(guildId);
-    if (queue.player && queue.isPlaying && !queue.isPaused) {
+    if (queue.player && !queue.isPaused) {
       queue.player.pause();
       queue.isPaused = true;
       return true;
@@ -615,12 +592,18 @@ class MusicManager {
 
   resume(guildId) {
     const queue = this.getQueue(guildId);
-    if (queue.player && queue.isPlaying && queue.isPaused) {
+    if (queue.player && queue.isPaused) {
       queue.player.unpause();
       queue.isPaused = false;
       return true;
     }
     return false;
+  }
+
+  setVolume(guildId, volume) {
+    const queue = this.getQueue(guildId);
+    queue.volume = Math.max(1, Math.min(150, volume));
+    return queue.volume;
   }
 
   toggleAutoplay(guildId) {
@@ -631,16 +614,7 @@ class MusicManager {
 
   stop(guildId) {
     const queue = this.getQueue(guildId);
-    if (queue.voiceChannel && queue.voiceChannel.setStatus) {
-      queue.voiceChannel.setStatus('').catch(() => {});
-    }
-
-    queue.queue = [];
-    queue.previousTracks = [];
-    queue.currentTrack = null;
-    queue.isPlaying = false;
-    queue.isPaused = false;
-    queue.isLooping = false;
+    this.finishPlayback(guildId);
 
     if (queue.player) {
       queue.player.stop(true);
