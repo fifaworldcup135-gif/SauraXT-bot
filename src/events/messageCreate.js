@@ -110,16 +110,21 @@ export async function execute(message, client) {
 
   // --- AUTO AI CHATBOT SYSTEM ---
   const channelName = (message.channel.name || '').toLowerCase();
-  const isAiChannel = (guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel) ||
-                      (!guildSettings.aiChatChannel && (channelName.includes('ai-chat') || channelName.includes('ai_chat') || (channelName.includes('ai') && channelName.includes('chat'))));
+  const channelMatchesAi = channelName.includes('ai-chat') || 
+                           channelName.includes('ai_chat') || 
+                           (channelName.includes('ai') && channelName.includes('chat')) ||
+                           channelName.includes('ai-bot') ||
+                           channelName.includes('bot-chat');
+  const isAiChannel = channelMatchesAi || (guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel);
   const isBotMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
 
   if (isAiChannel || isBotMentioned) {
-    if (isAiChannel && !guildSettings.aiChatChannel) {
+    if (channelMatchesAi && guildSettings.aiChatChannel !== message.channel.id) {
       db.updateGuild(guildId, { aiChatChannel: message.channel.id });
     }
 
     const cleanPrompt = message.content.replace(new RegExp('<@!?' + client.user.id + '>', 'g'), '').trim();
+    console.log(`[AI Triggered] Channel: #${message.channel.name} | User: ${message.author.username} | Message: "${cleanPrompt}"`);
 
     // Check if user sent a GIF, attachment, or text
     const hasGifOrAttachment = message.content.includes('tenor.com') ||

@@ -543,6 +543,7 @@ export async function getAiChatReply(messageOrPrompt, cleanPromptOrUserName, pos
     // 2. Groq Cloud LPU Engine (100% Free, NO credit card, ~80ms ultra-fast)
     const groqKey = process.env.GROQ_API_KEY;
     if (groqKey && prompt.length > 0) {
+      console.log(`[AI Engine] Querying Groq Cloud with prompt: "${prompt.slice(0, 40)}..."`);
       const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
       for (const groqModel of groqModels) {
         try {
@@ -572,9 +573,17 @@ export async function getAiChatReply(messageOrPrompt, cleanPromptOrUserName, pos
           if (groqRes.ok) {
             const groqData = await groqRes.json();
             const groqText = groqData.choices?.[0]?.message?.content?.trim();
-            if (groqText && groqText.length > 0) return groqText.slice(0, 1950);
+            if (groqText && groqText.length > 0) {
+              console.log(`[AI Engine] Groq responded successfully via ${groqModel}!`);
+              return groqText.slice(0, 1950);
+            }
+          } else {
+            const errBody = await groqRes.text().catch(() => '');
+            console.error(`[Groq Error ${groqRes.status} on ${groqModel}]:`, errBody);
           }
-        } catch (groqErr) {}
+        } catch (groqErr) {
+          console.error(`[Groq Fetch Error on ${groqModel}]:`, groqErr.message);
+        }
       }
     }
 
