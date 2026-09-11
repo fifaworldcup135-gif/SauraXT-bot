@@ -13,7 +13,6 @@ export async function execute(interaction, client) {
     .setDescription('Welcome to the official bot of **SAURAXT KA server**!\n\nSelect a category from the dropdown menu below to view full details and slash commands for each module.')
     .setImage(config.assets.banner)
     .addFields(
-      { name: '🎵 Music & Voice System', value: 'High quality audio playback, queue management, volume, loop & controller buttons', inline: false },
       { name: '🔴 YouTube Live Alerts', value: '24/7 automated stream & video announcements with role pings & thumbnail embeds', inline: false },
       { name: '🤖 Auto AI Chatbot', value: 'Dedicated #ai-chat channel and direct @mention natural multilingual AI responses', inline: false },
       { name: '🛡️ Moderation & Security', value: 'Ban, Kick, Timeout, Warn, Purge, Nuke, Slowmode & 24/7 AutoMod protection', inline: false },
@@ -30,7 +29,6 @@ export async function execute(interaction, client) {
     .setCustomId('help_category_select')
     .setPlaceholder('Select a category to view commands...')
     .addOptions([
-      { label: 'Music & Audio System', value: 'music', emoji: '🎵', description: 'Play, pause, queue, skip, volume, loop' },
       { label: 'Moderation & Security', value: 'moderation', emoji: '🛡️', description: 'Server protection, bans, mutes, automod' },
       { label: 'Economy & Casino', value: 'economy', emoji: '🪙', description: 'Coins, banking, blackjack, slots, shop' },
       { label: 'Leveling & XP', value: 'leveling', emoji: '⭐', description: 'Rank card, XP leaderboard, level channels' },

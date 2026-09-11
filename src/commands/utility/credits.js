@@ -4,12 +4,12 @@ const REPOSITORY_URL = 'https://github.com/Saura0S/sauraxt-discord-bot';
 
 export const data = new SlashCommandBuilder()
   .setName('credits')
-  .setDescription('Show music engine open-source credits and repository');
+  .setDescription('Show bot development credits and GitHub repository');
 
 export async function execute(interaction) {
   const embed = new EmbedBuilder()
-    .setTitle('SauraXT Music Credits')
-    .setDescription('Built with high-performance audio streaming by the SauraXT Development Team.\n\nEnjoying high quality music on SauraXT? Consider starring the project!')
+    .setTitle('SauraXT Bot Credits')
+    .setDescription('Built with high-performance Discord automation by the SauraXT Development Team.\n\nEnjoying SauraXT Bot? Consider starring the project!')
     .setColor('#6A5ACD')
     .setFooter({
       text: interaction.client.user?.username || 'SauraXT',

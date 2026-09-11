@@ -11,7 +11,7 @@ export async function loadCommands(client) {
   const commandsArray = [];
   const commandsPath = path.join(__dirname, '../commands');
 
-  const knownCategories = ['moderation', 'economy', 'leveling', 'tickets', 'giveaway', 'config', 'utility', 'fun', 'music'];
+  const knownCategories = ['moderation', 'economy', 'leveling', 'tickets', 'giveaway', 'config', 'utility', 'fun'];
 
   for (const category of knownCategories) {
     const categoryPath = path.join(commandsPath, category);

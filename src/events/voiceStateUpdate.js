@@ -21,7 +21,7 @@ export async function execute(oldState, newState, client) {
   if (!oldState.channelId && newState.channelId) {
     const embed = new EmbedBuilder()
       .setColor(config.colors.success)
-      .setTitle('?? Voice Channel Joined')
+      .setTitle('🔊 Voice Channel Joined')
       .setDescription(`**${member.user.tag}** joined ${newState.channel.name}`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] }).catch(() => {});
@@ -30,7 +30,7 @@ export async function execute(oldState, newState, client) {
   else if (oldState.channelId && !newState.channelId) {
     const embed = new EmbedBuilder()
       .setColor(config.colors.error)
-      .setTitle('?? Voice Channel Left')
+      .setTitle('🔇 Voice Channel Left')
       .setDescription(`**${member.user.tag}** left ${oldState.channel.name}`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] }).catch(() => {});
@@ -39,7 +39,7 @@ export async function execute(oldState, newState, client) {
   else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
     const embed = new EmbedBuilder()
       .setColor(config.colors.info)
-      .setTitle('?? Voice Channel Switched')
+      .setTitle('🔄 Voice Channel Switched')
       .setDescription(`**${member.user.tag}** moved from ${oldState.channel.name} to ${newState.channel.name}`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] }).catch(() => {});
