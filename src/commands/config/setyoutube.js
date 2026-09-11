@@ -7,16 +7,18 @@ export const data = new SlashCommandBuilder()
   .setName('setyoutube')
   .setDescription('Configure 24/7 automated YouTube Live Stream & Video notifications')
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .addStringOption(opt => opt.setName('channel_id_or_handle').setDescription('Your YouTube Channel ID (e.g. UC...) or Handle (e.g. @SAURAXT)').setRequired(true))
-  .addChannelOption(opt => opt.setName('discord_channel').setDescription('Discord channel to send live stream alerts').addChannelTypes(ChannelType.GuildText).setRequired(true))
-  .addRoleOption(opt => opt.setName('ping_role').setDescription('Role to mention when live (leave empty for @everyone)').setRequired(false))
-  .addStringOption(opt => opt.setName('custom_message').setDescription('Custom alert message. Placeholders: {channelName}, {title}, {url}').setRequired(false));
+  .addChannelOption(opt => opt.setName('discord_channel').setDescription('Channel for video uploads (e.g. #youtube)').addChannelTypes(ChannelType.GuildText).setRequired(true))
+  .addStringOption(opt => opt.setName('channel_id_or_handle').setDescription('YouTube Channel ID or Handle (default: @sauraXT)').setRequired(false))
+  .addChannelOption(opt => opt.setName('stream_channel').setDescription('Separate channel for live streams (e.g. #streaming)').addChannelTypes(ChannelType.GuildText).setRequired(false))
+  .addRoleOption(opt => opt.setName('ping_role').setDescription('Role to mention (leave empty for @everyone)').setRequired(false))
+  .addStringOption(opt => opt.setName('custom_message').setDescription('Custom message. Placeholders: {channelName}, {title}, {url}').setRequired(false));
 
 export async function execute(interaction) {
   await interaction.deferReply();
 
-  const identifier = interaction.options.getString('channel_id_or_handle').trim();
+  const identifier = (interaction.options.getString('channel_id_or_handle') || '@sauraXT').trim();
   const discordChannel = interaction.options.getChannel('discord_channel');
+  const streamChannel = interaction.options.getChannel('stream_channel');
   const pingRole = interaction.options.getRole('ping_role');
   const customMessage = interaction.options.getString('custom_message');
 
@@ -31,9 +33,11 @@ export async function execute(interaction) {
     channelId: latest.channelId,
     channelHandle: identifier,
     discordChannelId: discordChannel.id,
+    videoChannelId: discordChannel.id,
+    streamChannelId: streamChannel ? streamChannel.id : discordChannel.id,
     pingRole: pingRole ? pingRole.id : null,
-    customMessage: customMessage || '🔴 **{channelName} IS LIVE NOW!**\\n{url} 🎉',
-    lastVideoId: latest.videoId
+    customMessage: customMessage || null,
+    lastVideoId: null // Leave null so it immediately announces the latest video!
   };
 
   db.updateGuild(interaction.guildId, { youtube: youtubeConfig });
@@ -42,11 +46,12 @@ export async function execute(interaction) {
     embeds: [
       successEmbed(
         'YouTube Notifications Active 🔴',
-        'Successfully linked YouTube Channel: **' + latest.author + '** (`' + latest.channelId + '`)\\n\\n' +
-        '📺 **Alerts Channel:** ' + discordChannel.toString() + '\\n' +
-        '🔔 **Ping:** ' + (pingRole ? pingRole.toString() : '@everyone') + '\\n' +
-        '🕒 **Latest Video/Stream Detected:** [' + latest.title + '](' + latest.url + ')\\n\\n' +
-        'The bot will now poll YouTube 24/7 every 2 minutes and automatically announce all new live streams & uploads!'
+        'Successfully linked YouTube Channel: **' + latest.author + '** (`' + latest.channelId + '`)\n\n' +
+        '📺 **Videos Channel:** ' + discordChannel.toString() + '\n' +
+        (streamChannel ? '🔴 **Live Stream Channel:** ' + streamChannel.toString() + '\n' : '') +
+        '🔔 **Ping:** ' + (pingRole ? pingRole.toString() : '@everyone') + '\n' +
+        '🕒 **Latest Video Detected:** [' + latest.title + '](' + latest.url + ')\n\n' +
+        'The bot will now poll YouTube 24/7 every 60 seconds and automatically announce all new video uploads and live streams!'
       )
     ]
   });

@@ -14,50 +14,77 @@ export async function execute(interaction) {
   const guildSettings = db.getGuild(interaction.guildId);
   const yt = guildSettings.youtube;
 
-  if (!yt || !yt.channelId) {
-    return interaction.editReply({
-      embeds: [errorEmbed('Not Configured', 'YouTube alerts are not configured yet! Run `/setyoutube` first.')]
-    });
-  }
-
-  const latest = await fetchLatestYouTubeVideo(yt.channelId);
+  const channelId = yt?.channelId || 'UC24ouCJhbY6mCnbw5jQVfyQ';
+  const latest = await fetchLatestYouTubeVideo(channelId);
   if (!latest) {
     return interaction.editReply({
-      embeds: [errorEmbed('Fetch Failed', 'Could not retrieve YouTube data for test.')]
+      embeds: [errorEmbed('Fetch Failed', 'Could not retrieve YouTube data for test. Make sure the channel is valid.')]
     });
   }
 
-  const pingText = yt.pingRole ? '<@&' + yt.pingRole + '>' : '@everyone';
-  const msgTemplate = yt.customMessage || '🔴 **{channelName} IS LIVE NOW!**\\n{url}';
-  const formattedMessage = msgTemplate
-    .replace(/{channelName}/g, latest.author)
-    .replace(/{title}/g, latest.title)
-    .replace(/{url}/g, latest.url);
+  const pingText = yt?.pingRole ? '<@&' + yt.pingRole + '>' : '@everyone';
 
-  const embed = new EmbedBuilder()
-    .setColor(0xFF0000)
-    .setTitle('🔴 [TEST PREVIEW] ' + latest.title)
-    .setURL(latest.url)
-    .setAuthor({ name: latest.author + ' (YouTube Live Stream)', iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', url: latest.url })
-    .setImage(latest.thumbnail)
-    .addFields(
-      { name: '📺 Channel', value: latest.author, inline: true },
-      { name: '🔗 Direct Link', value: '[Click Here to Watch Stream](' + latest.url + ')', inline: true }
-    )
-    .setFooter({ text: 'Test YouTube Notification • SAURAXT KA server' })
-    .setTimestamp();
+  if (latest.isLive) {
+    const msgTemplate = yt?.customMessage || '🔴 **{channelName} IS LIVE NOW!**\n{url} 🎉';
+    const formattedMessage = msgTemplate
+      .replace(/{channelName}/g, latest.author)
+      .replace(/{title}/g, latest.title)
+      .replace(/{url}/g, latest.url);
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel('Watch Live Stream')
-      .setStyle(ButtonStyle.Link)
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('🔴 [TEST LIVE] ' + latest.title)
       .setURL(latest.url)
-      .setEmoji('▶️')
-  );
+      .setAuthor({ name: latest.author + ' (YouTube Live Stream)', iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', url: latest.url })
+      .setImage(latest.thumbnail)
+      .addFields(
+        { name: '📺 Channel', value: latest.author, inline: true },
+        { name: '🔴 Status', value: 'Streaming Live Now!', inline: true },
+        { name: '🔗 Direct Link', value: '[Click Here to Join Stream](' + latest.url + ')', inline: false }
+      )
+      .setFooter({ text: 'Test YouTube Notification • SAURAXT KA server' })
+      .setTimestamp();
 
-  return interaction.editReply({
-    content: '🔔 (Test Announcement) ' + pingText + ' ' + formattedMessage,
-    embeds: [embed],
-    components: [row]
-  });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Join Live Stream 🔴')
+        .setStyle(ButtonStyle.Link)
+        .setURL(latest.url)
+    );
+
+    return interaction.editReply({
+      content: '🔔 (Test Announcement) ' + pingText + ' ' + formattedMessage,
+      embeds: [embed],
+      components: [row]
+    });
+  } else {
+    const content = '🔔 (Test Announcement) ' + pingText + ` 🎬 **NEW VIDEO UPLOADED BY ${latest.author}!**\n${latest.url}`;
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('🎬 [TEST UPLOAD] ' + latest.title)
+      .setURL(latest.url)
+      .setAuthor({ name: latest.author + ' (New Video Upload)', iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', url: latest.url })
+      .setImage(latest.thumbnail)
+      .addFields(
+        { name: '📺 Channel', value: latest.author, inline: true },
+        { name: '🎬 Type', value: 'New Video Upload', inline: true },
+        { name: '🔗 Watch Video', value: '[Click Here to Watch on YouTube](' + latest.url + ')', inline: false }
+      )
+      .setFooter({ text: 'Test YouTube Notification • SAURAXT KA server' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Watch Video ▶️')
+        .setStyle(ButtonStyle.Link)
+        .setURL(latest.url)
+    );
+
+    return interaction.editReply({
+      content,
+      embeds: [embed],
+      components: [row]
+    });
+  }
 }
