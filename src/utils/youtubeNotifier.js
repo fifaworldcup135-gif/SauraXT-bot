@@ -90,10 +90,18 @@ export async function fetchLatestYouTubeVideo(identifier) {
   }
 }
 
+let isChecking = false;
+
 export function startYouTubeNotifier(client) {
   console.log('🔴 YouTube Live Stream & Video Notifier worker started (checking every 60s)...');
 
   const checkFeeds = async () => {
+    if (isChecking) {
+      console.log('⏳ [YouTube Notifier] Previous check cycle is still running, skipping this tick.');
+      return;
+    }
+    isChecking = true;
+
     try {
       if (!client.isReady()) return;
 
@@ -126,7 +134,8 @@ export function startYouTubeNotifier(client) {
               videoChannelId: ytVideoChannel ? ytVideoChannel.id : defaultChannel.id,
               pingRole: yt?.pingRole || null,
               customMessage: yt?.customMessage || null,
-              lastVideoId: yt?.lastVideoId || null
+              lastVideoId: yt?.lastVideoId || null,
+              postedVideoIds: Array.isArray(yt?.postedVideoIds) ? yt.postedVideoIds : []
             };
             db.updateGuild(guild.id, { youtube: yt });
             console.log(`[YouTube Notifier] Auto-linked #${defaultChannel.name} in ${guild.name} to SauraXT (${yt.channelId})`);
@@ -142,102 +151,165 @@ export function startYouTubeNotifier(client) {
         }
 
         const latest = await fetchLatestYouTubeVideo(effectiveChannelId);
-        if (!latest) continue;
+        if (!latest || !latest.videoId) continue;
 
-        // If it's a new video/stream that hasn't been posted yet
-        if (latest.videoId !== yt.lastVideoId) {
-          // Select target channel: stream channel for live streams, video channel for uploads
-          const targetChannelId = latest.isLive 
-            ? (yt.streamChannelId || yt.discordChannelId) 
-            : (yt.videoChannelId || yt.discordChannelId);
+        // Maintain array of posted videos to prevent repeat broadcasts
+        const postedList = Array.isArray(yt.postedVideoIds) 
+          ? [...yt.postedVideoIds] 
+          : (yt.lastVideoId ? [yt.lastVideoId] : []);
 
-          const discordChannel = await client.channels.fetch(targetChannelId).catch(() => null);
-          if (!discordChannel) continue;
+        // 1. Check if already marked as posted in local database
+        if (postedList.includes(latest.videoId) || yt.lastVideoId === latest.videoId) {
+          continue;
+        }
 
-          // Update database first so we don't double-post
-          db.updateGuild(guild.id, {
-            youtube: { ...yt, lastVideoId: latest.videoId, channelId: effectiveChannelId }
-          });
+        // Target Discord channel
+        const targetChannelId = latest.isLive 
+          ? (yt.streamChannelId || yt.discordChannelId) 
+          : (yt.videoChannelId || yt.discordChannelId);
 
-          const pingText = yt.pingRole ? `<@&${yt.pingRole}>` : '@everyone';
+        const discordChannel = await client.channels.fetch(targetChannelId).catch(() => null);
+        if (!discordChannel) continue;
 
-          if (latest.isLive) {
-            // Live Stream Announcement
-            const msgTemplate = yt.customMessage || '🔴 **{channelName} IS LIVE NOW!**\n{url} 🎉';
-            const formattedMessage = msgTemplate
-              .replace(/{channelName}/g, latest.author)
-              .replace(/{title}/g, latest.title)
-              .replace(/{url}/g, latest.url);
-
-            const embed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('🔴 LIVE: ' + latest.title)
-              .setURL(latest.url)
-              .setAuthor({ 
-                name: `${latest.author} (YouTube Live Stream)`, 
-                iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', 
-                url: latest.url 
-              })
-              .setImage(latest.thumbnail)
-              .addFields(
-                { name: '📺 Channel', value: latest.author, inline: true },
-                { name: '🔴 Status', value: 'Streaming Live Now!', inline: true },
-                { name: '🔗 Direct Link', value: `[Click Here to Join Stream](${latest.url})`, inline: false }
-              )
-              .setFooter({ text: 'YouTube Live Stream Notification • SAURAXT KA server' })
-              .setTimestamp();
-
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setLabel('Join Live Stream 🔴')
-                .setStyle(ButtonStyle.Link)
-                .setURL(latest.url)
-            );
-
-            await discordChannel.send({
-              content: `${pingText} ${formattedMessage}`,
-              embeds: [embed],
-              components: [row]
-            }).catch(err => console.error('Failed to send YouTube live alert:', err));
-          } else {
-            // Regular Video Upload Announcement (NOT a live stream)
-            const content = `${pingText} 🎬 **NEW VIDEO UPLOADED BY ${latest.author}!**\n${latest.url}`;
-
-            const embed = new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('🎬 ' + latest.title)
-              .setURL(latest.url)
-              .setAuthor({ 
-                name: `${latest.author} (New Video Upload)`, 
-                iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', 
-                url: latest.url 
-              })
-              .setImage(latest.thumbnail)
-              .addFields(
-                { name: '📺 Channel', value: latest.author, inline: true },
-                { name: '🎬 Type', value: 'New Video Upload', inline: true },
-                { name: '🔗 Watch Video', value: `[Click Here to Watch on YouTube](${latest.url})`, inline: false }
-              )
-              .setFooter({ text: 'YouTube Video Notification • SAURAXT KA server' })
-              .setTimestamp();
-
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setLabel('Watch Video ▶️')
-                .setStyle(ButtonStyle.Link)
-                .setURL(latest.url)
-            );
-
-            await discordChannel.send({
-              content,
-              embeds: [embed],
-              components: [row]
-            }).catch(err => console.error('Failed to send YouTube video alert:', err));
+        // 2. LAYER 1 DE-DUPLICATION: Direct Channel History Scan
+        // Check recent 30 messages in the channel to see if this video was ALREADY posted by the bot
+        let alreadyInChannel = false;
+        try {
+          const recentMessages = await discordChannel.messages.fetch({ limit: 30 }).catch(() => null);
+          if (recentMessages && recentMessages.size > 0) {
+            alreadyInChannel = recentMessages.some(m => {
+              const hasVideoLink = m.content && (m.content.includes(latest.videoId) || m.content.includes(latest.url));
+              const hasEmbedLink = m.embeds && m.embeds.some(e => 
+                (e.url && (e.url.includes(latest.videoId) || e.url.includes(latest.url))) ||
+                (e.title && e.title.toLowerCase() === latest.title.toLowerCase()) ||
+                (e.description && e.description.includes(latest.videoId))
+              );
+              return hasVideoLink || hasEmbedLink;
+            });
           }
+        } catch (scanErr) {
+          console.warn('[YouTube Notifier] Channel history scan warning:', scanErr.message);
+        }
+
+        if (alreadyInChannel) {
+          console.log(`[YouTube Notifier] Video "${latest.title}" (${latest.videoId}) was already sent in #${discordChannel.name}. Syncing database and skipping duplicate post.`);
+          if (!postedList.includes(latest.videoId)) postedList.push(latest.videoId);
+          if (postedList.length > 50) postedList.shift();
+          db.updateGuild(guild.id, {
+            youtube: { ...yt, lastVideoId: latest.videoId, postedVideoIds: postedList, channelId: effectiveChannelId }
+          });
+          continue;
+        }
+
+        // 3. LAYER 2 DE-DUPLICATION: Cold Start Baseline Seeding
+        // If the bot has no recorded lastVideoId (e.g. first start or database reset),
+        // do not blast an old video published hours/days ago!
+        if (!yt.lastVideoId) {
+          const publishedMs = new Date(latest.published).getTime();
+          const ageHours = (Date.now() - publishedMs) / (1000 * 60 * 60);
+          const isFresh = latest.isLive || (!isNaN(ageHours) && ageHours < 0.5);
+
+          if (!isFresh) {
+            console.log(`[YouTube Notifier] Cold start: established baseline for "${latest.title}" (${latest.videoId}, published ${Math.round(ageHours)}h ago). Skipping past upload alert.`);
+            if (!postedList.includes(latest.videoId)) postedList.push(latest.videoId);
+            db.updateGuild(guild.id, {
+              youtube: { ...yt, lastVideoId: latest.videoId, postedVideoIds: postedList, channelId: effectiveChannelId }
+            });
+            continue;
+          }
+        }
+
+        // 4. Update database IMMEDIATELY before sending to prevent race conditions
+        if (!postedList.includes(latest.videoId)) postedList.push(latest.videoId);
+        if (postedList.length > 50) postedList.shift();
+
+        db.updateGuild(guild.id, {
+          youtube: { ...yt, lastVideoId: latest.videoId, postedVideoIds: postedList, channelId: effectiveChannelId }
+        });
+
+        // 5. Send Announcement
+        const pingText = yt.pingRole ? `<@&${yt.pingRole}>` : '@everyone';
+
+        if (latest.isLive) {
+          // Live Stream Announcement
+          const msgTemplate = yt.customMessage || '🔴 **{channelName} IS LIVE NOW!**\n{url} 🎉';
+          const formattedMessage = msgTemplate
+            .replace(/{channelName}/g, latest.author)
+            .replace(/{title}/g, latest.title)
+            .replace(/{url}/g, latest.url);
+
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('🔴 LIVE: ' + latest.title)
+            .setURL(latest.url)
+            .setAuthor({ 
+              name: `${latest.author} (YouTube Live Stream)`, 
+              iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', 
+              url: latest.url 
+            })
+            .setImage(latest.thumbnail)
+            .addFields(
+              { name: '📺 Channel', value: latest.author, inline: true },
+              { name: '🔴 Status', value: 'Streaming Live Now!', inline: true },
+              { name: '🔗 Direct Link', value: `[Click Here to Join Stream](${latest.url})`, inline: false }
+            )
+            .setFooter({ text: 'YouTube Live Stream Notification • SAURAXT KA server' })
+            .setTimestamp();
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel('Join Live Stream 🔴')
+              .setStyle(ButtonStyle.Link)
+              .setURL(latest.url)
+          );
+
+          await discordChannel.send({
+            content: `${pingText} ${formattedMessage}`,
+            embeds: [embed],
+            components: [row]
+          }).catch(err => console.error('Failed to send YouTube live alert:', err));
+          console.log(`[YouTube Notifier] Successfully announced Live Stream: ${latest.title}`);
+        } else {
+          // Regular Video Upload Announcement (NOT a live stream)
+          const content = `${pingText} 🎬 **NEW VIDEO UPLOADED BY ${latest.author}!**\n${latest.url}`;
+
+          const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('🎬 ' + latest.title)
+            .setURL(latest.url)
+            .setAuthor({ 
+              name: `${latest.author} (New Video Upload)`, 
+              iconURL: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png', 
+              url: latest.url 
+            })
+            .setImage(latest.thumbnail)
+            .addFields(
+              { name: '📺 Channel', value: latest.author, inline: true },
+              { name: '🎬 Type', value: 'New Video Upload', inline: true },
+              { name: '🔗 Watch Video', value: `[Click Here to Watch on YouTube](${latest.url})`, inline: false }
+            )
+            .setFooter({ text: 'YouTube Video Notification • SAURAXT KA server' })
+            .setTimestamp();
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel('Watch Video ▶️')
+              .setStyle(ButtonStyle.Link)
+              .setURL(latest.url)
+          );
+
+          await discordChannel.send({
+            content,
+            embeds: [embed],
+            components: [row]
+          }).catch(err => console.error('Failed to send YouTube video alert:', err));
+          console.log(`[YouTube Notifier] Successfully announced Video Upload: ${latest.title}`);
         }
       }
     } catch (err) {
       console.error('Error in YouTube notifier loop:', err);
+    } finally {
+      isChecking = false;
     }
   };
 

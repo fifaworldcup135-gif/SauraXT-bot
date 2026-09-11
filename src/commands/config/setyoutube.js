@@ -37,7 +37,8 @@ export async function execute(interaction) {
     streamChannelId: streamChannel ? streamChannel.id : discordChannel.id,
     pingRole: pingRole ? pingRole.id : null,
     customMessage: customMessage || null,
-    lastVideoId: null // Leave null so it immediately announces the latest video!
+    lastVideoId: latest.videoId,
+    postedVideoIds: [latest.videoId]
   };
 
   db.updateGuild(interaction.guildId, { youtube: youtubeConfig });

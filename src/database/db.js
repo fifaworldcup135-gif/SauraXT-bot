@@ -44,9 +44,14 @@ class Database {
 
   save() {
     try {
-      const tempPath = DB_FILE + '.tmp';
-      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf8');
-      fs.renameSync(tempPath, DB_FILE);
+      const content = JSON.stringify(this.data, null, 2);
+      try {
+        const tempPath = DB_FILE + '.tmp';
+        fs.writeFileSync(tempPath, content, 'utf8');
+        fs.renameSync(tempPath, DB_FILE);
+      } catch (atomicErr) {
+        fs.writeFileSync(DB_FILE, content, 'utf8');
+      }
     } catch (err) {
       console.error('Database save error:', err);
     }
@@ -71,8 +76,9 @@ class Database {
           channelHandle: null,
           discordChannelId: null,
           pingRole: null,
-          customMessage: '🔴 **{channelName} IS LIVE NOW!**\\nCome join the stream: {url} 🎉',
-          lastVideoId: null
+          customMessage: '🔴 **{channelName} IS LIVE NOW!**\nCome join the stream: {url} 🎉',
+          lastVideoId: null,
+          postedVideoIds: []
         },
         automod: {
           antiLink: false,
@@ -83,7 +89,11 @@ class Database {
       };
       this.save();
     }
-    return this.data.guilds[guildId];
+    const guild = this.data.guilds[guildId];
+    if (guild.youtube && !Array.isArray(guild.youtube.postedVideoIds)) {
+      guild.youtube.postedVideoIds = guild.youtube.lastVideoId ? [guild.youtube.lastVideoId] : [];
+    }
+    return guild;
   }
 
   updateGuild(guildId, updates) {
