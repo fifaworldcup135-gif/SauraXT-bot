@@ -345,6 +345,26 @@ export function generateHumanTextReply(cleanPrompt, userName = 'friend') {
     return pick(greetings);
   }
 
+  // --- 1B. INSULTS / "DUM AI" / "STUPID" / "PAGAL" ---
+  if (/dum ai|dumb|stupid|idiot|useless|pagal|bekar|gadha|bad bot|chutiya/.test(lower)) {
+    const roastReplies = [
+      `Ayy easy there ${userName}! 😂 I'm trying my best! If you want 200 IQ superhuman ChatGPT/Gemini answers, add the free GEMINI_API_KEY in the bot settings! Otherwise, ask me anything about gaming or drop a GIF! 🔥`,
+      `Bro called me dumb 😭 Emotional damage! I can give you Valorant crosshairs, GTA heist guides, and react to your GIFs, what more do you want from me! 😂🎮`,
+      `Haha hey! I may not be Albert Einstein yet, but I'm 24/7 online keeping this server alive! What do you need help with, bro? ⚡`
+    ];
+    return pick(roastReplies);
+  }
+
+  // --- 1C. "TELL ME HOW WORK" / "HOW DO YOU WORK" ---
+  if (/how (?:do you|u)?\s*work|tell me how (?:it|you)?\s*work|kaise kaam|what can you do|features|kaam kaise/.test(lower)) {
+    return `Here is how I work, **${userName}**! 🤖\n\n1. 💬 **Auto-Chat in #ai-chat**: Talk to me anytime about games, PC tips, jokes, or casual chat.\n2. 🎬 **GIF Reaction Engine**: Drop any GIF here, and I analyze the mood (funny, hype, clutch, facepalm) and send a matching GIF right back!\n3. 🎯 **Gaming Expert**: Ask me for *Valorant crosshairs*, *GTA V solo money guides*, *Minecraft FPS boost*, or *PC optimization*.\n4. 🔴 **24/7 YouTube Alerts**: I automatically announce whenever **SauraXT** uploads a video or starts a stream!\n5. 🪙 **Casino & Games**: Play \`/blackjack\`, \`/slots\`, check \`/rank\`, or open support tickets!`;
+  }
+
+  // --- 1D. SHORT "PC" / HARDWARE QUERY ---
+  if (/^(pc|computer|laptop|specs|rig)\b/i.test(lower) || lower === 'pc') {
+    return `Are you asking about gaming PC specs, FPS boost, or fixing lag, ${userName}? 🖥️ Tell me what game you're playing (Valorant, GTA V, Minecraft) or your specs, and I'll give you the best optimization settings! ⚡`;
+  }
+
   // --- 2. HOW ARE YOU / KYA HAAL HAI ---
   if (/how are you|kya haal|kaise ho|sab badhiya|kaisa hai|how r u|sab theek/.test(lower)) {
     const replies = [
