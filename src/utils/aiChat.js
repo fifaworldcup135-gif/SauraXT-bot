@@ -540,40 +540,48 @@ export async function getAiChatReply(messageOrPrompt, cleanPromptOrUserName, pos
       }
     }
 
-    // 2. xkiro Free AI API (Qwen 3.5 Flash)
+    // 2. xkiro Neural AI API (Mistral Large & Qwen Plus - 100% Free for $0 Balance)
     const xkiroKey = process.env.XKIRO_API_KEY || 'sk-xt-c68bfff669cee78759e7a069dd12347fc8ff382645919303';
     if (xkiroKey && prompt.length > 0) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch('https://api.xkiro.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + xkiroKey
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: 'qwen/qwen3.5-flash:free',
-            messages: [
-              {
-                role: 'system',
-                content: `You are SauraXT AI, a friendly, witty, human-like gamer companion in the Discord server "SAURAXT KA server". Respond directly to ${userName} in 1 to 3 short sentences. Speak like a real human gamer friend (using friendly gamer slang, witty banter, and fluent in English, Hindi & Hinglish). User prompt: "${prompt}"`
-              },
-              { role: 'user', content: prompt }
-            ],
-            max_tokens: 250
-          })
-        });
-        clearTimeout(timeout);
+      const freeModels = [
+        'mistralai/mistral-large-2512',
+        'qwen/qwen3.7-plus:free',
+        'qwen/qwen3.5-flash:free'
+      ];
 
-        if (res.ok) {
-          const data = await res.json();
-          const text = data.choices?.[0]?.message?.content?.trim();
-          if (text) return text.slice(0, 1950);
+      for (const modelName of freeModels) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
+          const res = await fetch('https://api.xkiro.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + xkiroKey
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: modelName,
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are SauraXT AI, a friendly, witty, enthusiastic human gamer companion in the Discord server "SAURAXT KA server". Respond directly to ${userName} in 1 to 3 short sentences. Speak like a real human gamer friend (using friendly gamer slang, witty banter, and fluent in English, Hindi & Hinglish). User prompt: "${prompt}"`
+                },
+                { role: 'user', content: prompt }
+              ],
+              max_tokens: 250
+            })
+          });
+          clearTimeout(timeout);
+
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content?.trim();
+            if (text) return text.slice(0, 1950);
+          }
+        } catch (err) {
+          // Try next free model in pool
         }
-      } catch (err) {
-        console.warn('[xkiro AI] Request error:', err.message);
       }
     }
 
