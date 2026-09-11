@@ -109,15 +109,34 @@ export async function execute(message, client) {
 
 
   // --- AUTO AI CHATBOT SYSTEM ---
-  const isAiChannel = guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel;
+  const isAiChannel = (guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel) ||
+                      (!guildSettings.aiChatChannel && message.channel.name && (message.channel.name.includes('ai-chat') || message.channel.name.includes('ai_chat')));
   const isBotMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
 
   if (isAiChannel || isBotMentioned) {
+    if (isAiChannel && !guildSettings.aiChatChannel) {
+      db.updateGuild(guildId, { aiChatChannel: message.channel.id });
+    }
+
     const cleanPrompt = message.content.replace(new RegExp('<@!?' + client.user.id + '>', 'g'), '').trim();
-    if (cleanPrompt.length > 0) {
+
+    // Check if user sent a GIF, attachment, or text
+    const hasGifOrAttachment = message.content.includes('tenor.com') ||
+                               message.content.includes('giphy.com') ||
+                               message.content.includes('.gif') ||
+                               (message.attachments && message.attachments.size > 0) ||
+                               (message.embeds && message.embeds.some(e => e.data?.type === 'gifv' || e.data?.thumbnail?.url?.includes('.gif')));
+
+    if (cleanPrompt.length > 0 || hasGifOrAttachment) {
       await message.channel.sendTyping().catch(() => {});
-      const reply = await getAiChatReply(cleanPrompt, message.author.username);
-      return message.reply(reply).catch(() => {});
+
+      // Simulate natural human typing speed (1.2 to 2.2 seconds)
+      await new Promise(res => setTimeout(res, 1200 + Math.random() * 1000));
+
+      const reply = await getAiChatReply(message, cleanPrompt, message.author.username);
+      if (reply) {
+        return message.reply(reply).catch(() => {});
+      }
     }
   }
 
