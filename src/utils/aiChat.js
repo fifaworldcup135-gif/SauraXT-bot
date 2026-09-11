@@ -540,7 +540,42 @@ export async function getAiChatReply(messageOrPrompt, cleanPromptOrUserName, pos
       }
     }
 
-    // 2. xkiro Neural AI API (Mistral Large & Qwen Plus - 100% Free for $0 Balance)
+    // 2. Groq Cloud LPU Engine (Llama 3.3 70B - 100% Free, NO credit card, ~300ms ultra-fast)
+    const groqKey = process.env.GROQ_API_KEY;
+    if (groqKey && prompt.length > 0) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are SauraXT AI, a friendly, witty, human-like gamer companion in the Discord server "SAURAXT KA server". Respond directly to ${userName} in 1 to 3 short sentences. Speak like a real human gamer friend (using friendly gamer slang, witty banter, and fluent in English, Hindi & Hinglish). User prompt: "${prompt}"`
+              },
+              { role: 'user', content: prompt }
+            ],
+            max_tokens: 250
+          })
+        });
+        clearTimeout(timeout);
+
+        if (groqRes.ok) {
+          const groqData = await groqRes.json();
+          const groqText = groqData.choices?.[0]?.message?.content?.trim();
+          if (groqText) return groqText.slice(0, 1950);
+        }
+      } catch (groqErr) {}
+    }
+
+    // 3. xkiro Neural AI API (Mistral Large & Qwen Plus - 100% Free for $0 Balance)
     const xkiroKey = process.env.XKIRO_API_KEY || 'sk-xt-c68bfff669cee78759e7a069dd12347fc8ff382645919303';
     if (xkiroKey && prompt.length > 0) {
       const freeModels = [
@@ -583,41 +618,6 @@ export async function getAiChatReply(messageOrPrompt, cleanPromptOrUserName, pos
           // Try next free model in pool
         }
       }
-    }
-
-    // 2B. Optional: If GROQ_API_KEY is configured (100% free, NO credit card needed)
-    const groqKey = process.env.GROQ_API_KEY;
-    if (groqKey && prompt.length > 1) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are SauraXT AI, a friendly, witty, human-like gamer companion in the Discord server "SAURAXT KA server". Respond directly to ${userName} in 1 to 3 short sentences. Speak like a real human gamer friend (using friendly gamer slang, witty banter, and fluent in English, Hindi & Hinglish). User prompt: "${prompt}"`
-              },
-              { role: 'user', content: prompt }
-            ],
-            max_tokens: 250
-          })
-        });
-        clearTimeout(timeout);
-
-        if (groqRes.ok) {
-          const groqData = await groqRes.json();
-          const groqText = groqData.choices?.[0]?.message?.content?.trim();
-          if (groqText) return groqText.slice(0, 1950);
-        }
-      } catch (groqErr) {}
     }
 
     // 2B. Optional: If GEMINI_API_KEY is configured in .env, query Google Gemini Flash REST API
