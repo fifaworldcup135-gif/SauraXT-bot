@@ -109,8 +109,9 @@ export async function execute(message, client) {
 
 
   // --- AUTO AI CHATBOT SYSTEM ---
+  const channelName = (message.channel.name || '').toLowerCase();
   const isAiChannel = (guildSettings.aiChatChannel && message.channel.id === guildSettings.aiChatChannel) ||
-                      (!guildSettings.aiChatChannel && message.channel.name && (message.channel.name.includes('ai-chat') || message.channel.name.includes('ai_chat')));
+                      (!guildSettings.aiChatChannel && (channelName.includes('ai-chat') || channelName.includes('ai_chat') || (channelName.includes('ai') && channelName.includes('chat'))));
   const isBotMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
 
   if (isAiChannel || isBotMentioned) {
