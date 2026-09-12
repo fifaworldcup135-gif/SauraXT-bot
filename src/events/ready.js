@@ -45,7 +45,7 @@ async function cleanupStartupSpam(client) {
       const textChannels = guild.channels.cache.filter(c => c.isTextBased() && c.permissionsFor(client.user)?.has(PermissionFlagsBits.ManageMessages));
       for (const channel of textChannels.values()) {
         try {
-          const messages = await channel.messages.fetch({ limit: 40 });
+          const messages = await channel.messages.fetch({ limit: 100 });
           for (const msg of messages.values()) {
             if (msg.author.bot) continue;
             const isMod = msg.member?.permissions.has(PermissionFlagsBits.ManageMessages) || 
@@ -58,11 +58,16 @@ async function cleanupStartupSpam(client) {
             const isScam = hasEveryone || 
                            contentLower.includes('mrbeast') || 
                            contentLower.includes('promo code') || 
+                           contentLower.includes('bonus code') ||
+                           contentLower.includes('free nitro') ||
+                           contentLower.includes('claim nitro') ||
+                           contentLower.includes('airdrop') ||
                            (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || msg.attachments?.size > 0));
 
             if (isScam) {
               console.log(`🛡️ [AutoMod Boot Cleanup] Deleting spam message (${msg.id}) by ${msg.author.tag} in #${channel.name}`);
               await msg.delete().catch(() => {});
+              await new Promise(r => setTimeout(r, 400));
             }
           }
         } catch (chanErr) {}
