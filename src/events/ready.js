@@ -1,6 +1,7 @@
 import { ActivityType, PermissionFlagsBits } from 'discord.js';
 import { startGiveawayChecker } from '../utils/giveawayRunner.js';
 import { startYouTubeNotifier } from '../utils/youtubeNotifier.js';
+import { secureServerRoles } from '../utils/roleHardener.js';
 import { config } from '../config.js';
 
 export const once = true;
@@ -34,8 +35,19 @@ export async function execute(client) {
   // Start 24/7 YouTube live stream notifier
   startYouTubeNotifier(client);
 
+  // Automatically secure roles on boot (revoke @everyone mention permissions from members)
+  setTimeout(async () => {
+    for (const guild of client.guilds.cache.values()) {
+      console.log('🛡️ [Role Security Boot] Auditing roles for ' + guild.name + '...');
+      const report = await secureServerRoles(guild, client);
+      if (report.securedRoles.length > 0) {
+        console.log('🛡️ [Role Security Boot] Secured roles: ' + report.securedRoles.join(', '));
+      }
+    }
+  }, 2000);
+
   // Automatically scan and clean existing scam / unauthorized @everyone spam on boot
-  setTimeout(() => cleanupStartupSpam(client), 3000);
+  setTimeout(() => cleanupStartupSpam(client), 4000);
 }
 
 async function cleanupStartupSpam(client) {
