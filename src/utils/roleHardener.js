@@ -1,4 +1,4 @@
-﻿import { PermissionFlagsBits } from 'discord.js';
+import { PermissionFlagsBits } from 'discord.js';
 
 export async function secureServerRoles(guild, client) {
   const report = {
@@ -71,6 +71,10 @@ export async function secureServerRoles(guild, client) {
     if (canManageChannels) {
       for (const channel of guild.channels.cache.values()) {
         if (channel.isTextBased() && !channel.isThread()) {
+          const cName = channel.name.toLowerCase();
+          // Preserve game drop notification channels like #free-games so FreeStuff bot can notify
+          if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('drop')) continue;
+
           try {
             await channel.permissionOverwrites.edit(guild.roles.everyone, {
               MentionEveryone: false,

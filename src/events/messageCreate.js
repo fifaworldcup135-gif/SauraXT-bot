@@ -12,8 +12,16 @@ export const once = false;
 export async function execute(message, client) {
   if (!message.guild || message.author.id === client.user.id) return;
 
-  // Intercept unauthorized bot / webhook scam or mass pings
+  const channelName = (message.channel.name || '').toLowerCase();
+  const isFreeGamesChannel = channelName.includes('free-game') || channelName.includes('freegame') || channelName.includes('drop');
+  const isGameAlertBot = message.author.username.toLowerCase().includes('freestuff') ||
+                         message.author.username.toLowerCase().includes('epic') ||
+                         message.author.username.toLowerCase().includes('steam');
+
+  // Whitelist legitimate free game drop bots (e.g. FreeStuff in #free-games)
   if (message.author.bot) {
+    if (isGameAlertBot || isFreeGamesChannel) return; // Allow FreeStuff and game drop alerts completely!
+
     const isBotAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
     if (!isBotAdmin) {
       const contentLower = message.content.toLowerCase();
@@ -34,7 +42,6 @@ export async function execute(message, client) {
   const userId = message.author.id;
   const guildSettings = db.getGuild(guildId);
 
-  const channelName = (message.channel.name || '').toLowerCase();
   const channelMatchesAi = channelName.includes('ai-chat') || 
                            channelName.includes('ai_chat') || 
                            (channelName.includes('ai') && channelName.includes('chat')) ||

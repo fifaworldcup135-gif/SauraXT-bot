@@ -56,10 +56,14 @@ async function cleanupStartupSpam(client) {
     for (const guild of client.guilds.cache.values()) {
       const textChannels = guild.channels.cache.filter(c => c.isTextBased() && c.permissionsFor(client.user)?.has(PermissionFlagsBits.ManageMessages));
       for (const channel of textChannels.values()) {
+        const cName = channel.name.toLowerCase();
+        // NEVER touch legitimate game drop announcement channels like #free-games!
+        if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('giveaway') || cName.includes('drop')) continue;
+
         try {
           const messages = await channel.messages.fetch({ limit: 100 });
           for (const msg of messages.values()) {
-            if (msg.author.bot) continue;
+            if (msg.author.bot || msg.author.username.toLowerCase().includes('freestuff')) continue;
             const isMod = msg.member?.permissions.has(PermissionFlagsBits.ManageMessages) || 
                           msg.member?.permissions.has(PermissionFlagsBits.Administrator) ||
                           msg.member?.permissions.has(PermissionFlagsBits.MentionEveryone);
