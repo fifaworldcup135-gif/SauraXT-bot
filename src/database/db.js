@@ -82,14 +82,20 @@ class Database {
         },
         automod: {
           antiLink: false,
-          antiSpam: false,
+          antiSpam: true,
           antiCaps: false,
+          antiScam: true,
+          antiMassMention: true,
           badWords: []
         }
       };
       this.save();
     }
     const guild = this.data.guilds[guildId];
+    if (guild.automod) {
+      if (guild.automod.antiScam === undefined) guild.automod.antiScam = true;
+      if (guild.automod.antiMassMention === undefined) guild.automod.antiMassMention = true;
+    }
     if (guild.youtube && !Array.isArray(guild.youtube.postedVideoIds)) {
       guild.youtube.postedVideoIds = guild.youtube.lastVideoId ? [guild.youtube.lastVideoId] : [];
     }

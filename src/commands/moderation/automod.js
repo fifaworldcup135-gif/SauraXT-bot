@@ -8,6 +8,16 @@ export const data = new SlashCommandBuilder()
   .setDescription('Configure AutoMod security filters for the server')
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand(sub =>
+    sub.setName('antiscam')
+      .setDescription('Toggle Anti-Crypto / Phishing / Scam message protection')
+      .addBooleanOption(opt => opt.setName('enabled').setDescription('Enable or disable').setRequired(true))
+  )
+  .addSubcommand(sub =>
+    sub.setName('antimassmention')
+      .setDescription('Toggle Anti-@everyone / Anti-Mass Mention protection')
+      .addBooleanOption(opt => opt.setName('enabled').setDescription('Enable or disable').setRequired(true))
+  )
+  .addSubcommand(sub =>
     sub.setName('antilink')
       .setDescription('Toggle Anti-Invite / Anti-Link protection')
       .addBooleanOption(opt => opt.setName('enabled').setDescription('Enable or disable').setRequired(true))
@@ -41,7 +51,21 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   const sub = interaction.options.getSubcommand();
   const guildSettings = db.getGuild(interaction.guildId);
-  const automod = guildSettings.automod || { antiLink: false, antiSpam: false, antiCaps: false, badWords: [] };
+  const automod = guildSettings.automod || { antiLink: false, antiSpam: true, antiCaps: false, antiScam: true, antiMassMention: true, badWords: [] };
+
+  if (sub === 'antiscam') {
+    const enabled = interaction.options.getBoolean('enabled');
+    automod.antiScam = enabled;
+    db.updateGuild(interaction.guildId, { automod });
+    return interaction.reply({ embeds: [successEmbed('AutoMod Anti-Scam', 'Anti-Crypto / Phishing Scam protection has been **' + (enabled ? 'ENABLED' : 'DISABLED') + '**.')] });
+  }
+
+  if (sub === 'antimassmention') {
+    const enabled = interaction.options.getBoolean('enabled');
+    automod.antiMassMention = enabled;
+    db.updateGuild(interaction.guildId, { automod });
+    return interaction.reply({ embeds: [successEmbed('AutoMod Anti-Mass Mention', 'Anti-@everyone / Anti-Mass Mention protection has been **' + (enabled ? 'ENABLED' : 'DISABLED') + '**.')] });
+  }
 
   if (sub === 'antilink') {
     const enabled = interaction.options.getBoolean('enabled');
@@ -106,8 +130,10 @@ export async function execute(interaction) {
       .setColor(config.colors.primary)
       .setTitle('🛡️ AutoMod Protection Status')
       .addFields(
+        { name: '🚨 Anti-@everyone / Mass Mention', value: (automod.antiMassMention !== false) ? '✅ Enabled (Auto-Delete)' : '❌ Disabled', inline: true },
+        { name: '🛡️ Anti-Crypto / Phishing Scam', value: (automod.antiScam !== false) ? '✅ Enabled (Auto-Delete)' : '❌ Disabled', inline: true },
         { name: '🔗 Anti-Link / Anti-Invite', value: automod.antiLink ? '✅ Enabled' : '❌ Disabled', inline: true },
-        { name: '⚡ Anti-Spam Rate Limit', value: automod.antiSpam ? '✅ Enabled' : '❌ Disabled', inline: true },
+        { name: '⚡ Anti-Spam Rate Limit', value: (automod.antiSpam !== false) ? '✅ Enabled' : '❌ Disabled', inline: true },
         { name: '🔠 Anti-Caps Filter', value: automod.antiCaps ? '✅ Enabled' : '❌ Disabled', inline: true },
         { name: '🚫 Bad Words Blacklist', value: automod.badWords.length + ' words filtered', inline: true }
       )
