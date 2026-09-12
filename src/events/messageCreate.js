@@ -10,7 +10,25 @@ const spamTracker = new Map();
 export const once = false;
 
 export async function execute(message, client) {
-  if (!message.guild || message.author.bot) return;
+  if (!message.guild || message.author.id === client.user.id) return;
+
+  // Intercept unauthorized bot / webhook scam or mass pings
+  if (message.author.bot) {
+    const isBotAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
+    if (!isBotAdmin) {
+      const contentLower = message.content.toLowerCase();
+      const hasEveryone = contentLower.includes('@everyone') || contentLower.includes('@here') || message.mentions.everyone;
+      const isScam = hasEveryone || 
+                     contentLower.includes('mrbeast') || 
+                     contentLower.includes('promo code') || 
+                     (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || message.attachments?.size > 0));
+      if (isScam) {
+        console.log(`[AutoMod] Caught rogue bot/webhook scam spam from ${message.author.tag} in #${message.channel.name}`);
+        await message.delete().catch(() => {});
+      }
+    }
+    return; // Don't process XP, leveling, or AI chat for bots
+  }
 
   const guildId = message.guild.id;
   const userId = message.author.id;
