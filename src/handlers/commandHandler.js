@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { REST, Routes } from 'discord.js';
+import { getBotToken } from '../utils/token.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,7 +50,7 @@ export async function loadCommands(client) {
 
   console.log('✅ Loaded ' + client.commands.size + ' Slash Commands.');
 
-  const token = process.env.BOT_TOKEN;
+  const token = getBotToken();
   const clientId = process.env.CLIENT_ID || '1062342294398836737';
 
   if (token && clientId) {

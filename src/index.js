@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { loadEvents } from './handlers/eventHandler.js';
 import { loadCommands } from './handlers/commandHandler.js';
 import { startKeepAliveServer } from './server.js';
+import { getBotToken } from './utils/token.js';
 import { config } from './config.js';
 
 console.log('====================================================');
@@ -42,7 +43,7 @@ process.on('uncaughtExceptionMonitor', (err, origin) => {
 });
 
 async function main() {
-  const token = process.env.BOT_TOKEN;
+  const token = getBotToken();
   if (!token) {
     console.error('❌ ERROR: BOT_TOKEN is missing. Please set BOT_TOKEN in the Env tab or .env file!');
     process.exit(1);
