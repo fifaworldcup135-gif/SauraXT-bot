@@ -58,12 +58,13 @@ async function cleanupStartupSpam(client) {
       for (const channel of textChannels.values()) {
         const cName = channel.name.toLowerCase();
         // NEVER touch legitimate game drop announcement channels like #free-games!
-        if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('giveaway') || cName.includes('drop')) continue;
+        if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('giveaway') || cName.includes('drop') || cName.includes('announce') || cName.includes('rule')) continue;
 
         try {
           const messages = await channel.messages.fetch({ limit: 100 });
           for (const msg of messages.values()) {
             if (msg.author.bot || msg.author.username.toLowerCase().includes('freestuff')) continue;
+            if (msg.author.id === guild.ownerId) continue;
             const isMod = msg.member?.permissions.has(PermissionFlagsBits.ManageMessages) || 
                           msg.member?.permissions.has(PermissionFlagsBits.Administrator) ||
                           msg.member?.permissions.has(PermissionFlagsBits.MentionEveryone);
@@ -71,14 +72,18 @@ async function cleanupStartupSpam(client) {
 
             const contentLower = msg.content.toLowerCase();
             const hasEveryone = contentLower.includes('@everyone') || contentLower.includes('@here') || msg.mentions.everyone;
+            const attCount = msg.attachments?.size || 0;
+            const isMemeOrMediaChannel = ['media', 'memes', 'clips', 'screenshots', 'art', 'pics', 'photos', 'wallpapers'].some(keyword => cName.includes(keyword));
+            const isImageDumpScam = (attCount >= 3 || (attCount >= 2 && msg.content.trim().length === 0)) && !isMemeOrMediaChannel;
             const isScam = hasEveryone || 
+                           isImageDumpScam ||
                            contentLower.includes('mrbeast') || 
                            contentLower.includes('promo code') || 
-                           contentLower.includes('bonus code') ||
+                           contentLower.includes('bonus code') || 
                            contentLower.includes('free nitro') ||
                            contentLower.includes('claim nitro') ||
                            contentLower.includes('airdrop') ||
-                           (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || msg.attachments?.size > 0));
+                           (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || attCount > 0));
 
             if (isScam) {
               console.log(`🛡️ [AutoMod Boot Cleanup] Deleting spam message (${msg.id}) by ${msg.author.tag} in #${channel.name}`);

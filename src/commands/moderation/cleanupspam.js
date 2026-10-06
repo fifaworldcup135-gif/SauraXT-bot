@@ -17,8 +17,8 @@ export async function execute(interaction) {
 
   for (const channel of textChannels.values()) {
     const cName = channel.name.toLowerCase();
-    // Do NOT sweep whitelisted game drop / announcement channels like #free-games!
-    if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('giveaway') || cName.includes('drop')) continue;
+    // Do NOT sweep whitelisted game drop / announcement / rules channels like #free-games!
+    if (cName.includes('free-game') || cName.includes('freegame') || cName.includes('giveaway') || cName.includes('drop') || cName.includes('announce') || cName.includes('rule')) continue;
 
     try {
       const messages = await channel.messages.fetch({ limit: 100 });
@@ -26,6 +26,7 @@ export async function execute(interaction) {
 
       for (const msg of messages.values()) {
         if (msg.author.bot || msg.author.username.toLowerCase().includes('freestuff')) continue;
+        if (msg.author.id === guild.ownerId) continue;
 
         const isMod = msg.member?.permissions.has(PermissionFlagsBits.ManageMessages) || 
                       msg.member?.permissions.has(PermissionFlagsBits.Administrator) ||
@@ -35,14 +36,19 @@ export async function execute(interaction) {
 
         const contentLower = msg.content.toLowerCase();
         const hasEveryone = contentLower.includes('@everyone') || contentLower.includes('@here') || msg.mentions.everyone;
+        const attCount = msg.attachments?.size || 0;
+        const isMemeOrMediaChannel = ['media', 'memes', 'clips', 'screenshots', 'art', 'pics', 'photos', 'wallpapers'].some(keyword => cName.includes(keyword));
+        const isImageDumpScam = (attCount >= 3 || (attCount >= 2 && msg.content.trim().length === 0)) && !isMemeOrMediaChannel;
+
         const isScam = hasEveryone || 
+                       isImageDumpScam ||
                        contentLower.includes('mrbeast') || 
                        contentLower.includes('promo code') || 
                        contentLower.includes('bonus code') ||
                        contentLower.includes('free nitro') ||
                        contentLower.includes('claim nitro') ||
                        contentLower.includes('airdrop') ||
-                       (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || msg.attachments?.size > 0));
+                       (contentLower.includes('crypto') && (contentLower.includes('bonus') || contentLower.includes('code') || attCount > 0));
 
         if (isScam) {
           await msg.delete().catch(() => {});

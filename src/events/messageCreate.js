@@ -71,7 +71,7 @@ export async function execute(message, client) {
       return;
     }
 
-    // 2. Anti-Crypto / Phishing / Scam Detection (CRITICAL)
+    // 2. Anti-Crypto / Phishing / Scam & Suspicious Multi-Image Dump (CRITICAL)
     const contentLower = message.content.toLowerCase();
     const scamTerms = [
       'crypto', 'bitcoin', 'btc', 'ethereum', 'eth', 'airdrop', 'promo code', 'bonus code',
@@ -79,13 +79,18 @@ export async function execute(message, client) {
       'withdrawal success', 'deposit bonus', 'wallet connect', 'doubler', 'rakeback'
     ];
     const hasScamWord = scamTerms.some(term => contentLower.includes(term));
-    const hasAttachments = message.attachments && message.attachments.size > 0;
+    const attachmentCount = message.attachments?.size || 0;
+    const hasAttachments = attachmentCount > 0;
+    const isMemeOrMediaChannel = channelName.includes('meme') || channelName.includes('art') || channelName.includes('media') || channelName.includes('clip') || channelName.includes('screenshot');
 
-    if (hasScamWord && (hasAttachments || contentLower.includes('http') || contentLower.includes('bonus') || contentLower.includes('code') || contentLower.includes('claim'))) {
-      console.log(`[AutoMod] Caught crypto/phishing scam from ${message.author.tag} in #${message.channel.name}`);
+    const isKeywordScam = hasScamWord && (hasAttachments || contentLower.includes('http') || contentLower.includes('bonus') || contentLower.includes('code') || contentLower.includes('claim'));
+    const isImageDumpScam = (attachmentCount >= 3 || (attachmentCount >= 2 && message.content.trim().length === 0)) && !isMemeOrMediaChannel;
+
+    if (isKeywordScam || isImageDumpScam) {
+      console.log(`[AutoMod] Caught scam/image-dump spam from ${message.author.tag} in #${message.channel.name}`);
       await message.delete().catch(() => {});
-      await message.member?.timeout(10 * 60 * 1000, 'AutoMod: Suspicious crypto scam/phishing').catch(() => {});
-      const warnMsg = await message.channel.send(`🛡️ **AutoMod:** Deleted suspicious scam/phishing message from ${message.author.toString()}.`);
+      await message.member?.timeout(10 * 60 * 1000, 'AutoMod: Suspicious crypto scam / image dump spam').catch(() => {});
+      const warnMsg = await message.channel.send(`🛡️ **AutoMod:** Deleted suspicious scam/image-dump spam from ${message.author.toString()}.`);
       setTimeout(() => warnMsg.delete().catch(() => {}), 6000);
       return;
     }
